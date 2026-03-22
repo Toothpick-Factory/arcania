@@ -21,11 +21,12 @@ describe('Shop system', () => {
     p.gold = 100;
     const shop = generateShop(1);
 
+    const originalStock = shop.items[0].stock;
     const success = buyItem(p, shop, 0);
     expect(success).toBe(true);
     expect(p.gold).toBeLessThan(100);
     expect(getItemCount(p, shop.items[0].item.id)).toBe(1);
-    expect(shop.items[0].stock).toBeLessThan(generateShop(1).items[0]?.stock || Infinity);
+    expect(shop.items[0].stock).toBe(originalStock - 1);
   });
 
   it('cannot buy without enough gold', () => {

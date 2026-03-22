@@ -7,7 +7,7 @@ import { Shop, buyItem } from '../systems/shop';
 import { COOKING_RECIPES, getItemDef, getFoodEffect } from '../data/items';
 import { canCook, cook, eatFood, getAvailableRecipes } from '../systems/cooking';
 
-export type MenuType = 'none' | 'inventory' | 'shop' | 'cooking' | 'pause' | 'death' | 'victory' | 'hub';
+export type MenuType = 'none' | 'inventory' | 'shop' | 'cooking' | 'pause' | 'controls' | 'death' | 'victory' | 'hub';
 
 export interface MenuState {
   type: MenuType;
@@ -35,14 +35,20 @@ export function updateMenu(
     }
   }
 
-  // ESC to close menus
+  // ESC to close menus or open pause
   if (input.isKeyJustPressed('Escape')) {
+    if (menu.type === 'controls') {
+      menu.type = 'pause';
+      menu.selectedIndex = 0;
+      return null;
+    }
     if (menu.type !== 'none' && menu.type !== 'death' && menu.type !== 'victory') {
       menu.type = 'none';
       return null;
     }
     if (menu.type === 'none') {
       menu.type = 'pause';
+      menu.selectedIndex = 0;
       return null;
     }
   }
@@ -117,7 +123,12 @@ function handleMenuAction(menu: MenuState, player: Player, meta: MetaSave): stri
       return 'restart';
     case 'pause':
       if (menu.selectedIndex === 0) { menu.type = 'none'; return null; }
-      if (menu.selectedIndex === 1) return 'restart';
+      if (menu.selectedIndex === 1) { menu.type = 'controls'; menu.selectedIndex = 0; return null; }
+      if (menu.selectedIndex === 2) return 'restart';
+      return null;
+    case 'controls':
+      menu.type = 'pause';
+      menu.selectedIndex = 0;
       return null;
     case 'hub':
       if (menu.selectedIndex === 0) return 'start_run';
@@ -140,6 +151,7 @@ export function renderMenu(renderer: Renderer, menu: MenuState, player: Player, 
     case 'shop': renderShop(renderer, menu, player); break;
     case 'cooking': renderCooking(renderer, menu, player, meta); break;
     case 'pause': renderPause(renderer, menu); break;
+    case 'controls': renderControls(renderer); break;
     case 'death': renderDeath(renderer, player, meta); break;
     case 'victory': renderVictory(renderer, player, meta); break;
     case 'hub': renderHub(renderer, menu, player, meta); break;
@@ -276,18 +288,18 @@ function renderCooking(renderer: Renderer, menu: MenuState, player: Player, meta
 }
 
 function renderPause(renderer: Renderer, menu: MenuState): void {
-  const panelX = CANVAS_WIDTH / 2 - 120;
-  const panelY = CANVAS_HEIGHT / 2 - 80;
+  const panelX = CANVAS_WIDTH / 2 - 140;
+  const panelY = CANVAS_HEIGHT / 2 - 100;
 
-  renderer.drawRect(panelX, panelY, 240, 160, '#1a1a2e');
-  renderer.drawRectOutline(panelX, panelY, 240, 160, '#666688');
+  renderer.drawRect(panelX, panelY, 280, 200, '#1a1a2e');
+  renderer.drawRectOutline(panelX, panelY, 280, 200, '#666688');
   renderer.drawText('PAUSED', CANVAS_WIDTH / 2, panelY + 15, '#ffffff', 24, 'center');
 
-  const options = ['Resume', 'Quit Run'];
+  const options = ['Resume', 'Controls', 'Quit Run'];
   menu.selectedIndex = Math.min(menu.selectedIndex, options.length - 1);
 
   for (let i = 0; i < options.length; i++) {
-    const y = panelY + 60 + i * 30;
+    const y = panelY + 60 + i * 35;
     const isSelected = i === menu.selectedIndex;
     renderer.drawText(
       `${isSelected ? '> ' : '  '}${options[i]}`,
@@ -295,6 +307,69 @@ function renderPause(renderer: Renderer, menu: MenuState): void {
       isSelected ? '#ffffff' : '#888888', 16, 'center'
     );
   }
+
+  renderer.drawText('[ESC] Resume', CANVAS_WIDTH / 2, panelY + 178, '#555555', 11, 'center');
+}
+
+function renderControls(renderer: Renderer): void {
+  const panelX = CANVAS_WIDTH / 2 - 240;
+  const panelY = 40;
+  const panelW = 480;
+  const panelH = 560;
+
+  renderer.drawRect(panelX, panelY, panelW, panelH, '#1a1a2e');
+  renderer.drawRectOutline(panelX, panelY, panelW, panelH, '#cc88ff');
+  renderer.drawText('CONTROLS', CANVAS_WIDTH / 2, panelY + 12, '#cc88ff', 22, 'center');
+
+  const leftX = panelX + 20;
+  const rightX = panelX + 200;
+  let y = panelY + 50;
+  const lineH = 22;
+
+  function section(title: string): void {
+    y += 6;
+    renderer.drawText(title, CANVAS_WIDTH / 2, y, '#cc88ff', 14, 'center');
+    y += lineH + 2;
+  }
+
+  function row(key: string, desc: string): void {
+    renderer.drawText(key, leftX, y, '#ffdd44', 12);
+    renderer.drawText(desc, rightX, y, '#cccccc', 12);
+    y += lineH;
+  }
+
+  section('MOVEMENT');
+  row('W / Arrow Up', 'Move up');
+  row('A / Arrow Left', 'Move left');
+  row('S / Arrow Down', 'Move down');
+  row('D / Arrow Right', 'Move right');
+
+  section('COMBAT');
+  row('Left Click', 'Cast active spell toward cursor');
+  row('Q', 'Previous spell');
+  row('E', 'Next spell');
+  row('1 - 6', 'Select spell by slot');
+  row('Shift + Number', 'Set combo slot (press two to combine)');
+
+  section('INTERACTION');
+  row('F', 'Interact (shops, cooking, stairs)');
+
+  section('MENUS');
+  row('I', 'Open / close inventory');
+  row('ESC', 'Pause menu / close current menu');
+  row('W/S or Up/Down', 'Navigate menu options');
+  row('Enter / Space', 'Confirm selection');
+
+  section('TIPS');
+  renderer.drawText('Combine two different spell elements for powerful', leftX, y, '#888888', 11);
+  y += 16;
+  renderer.drawText('combo attacks. Mix ingredients at cooking stations', leftX, y, '#888888', 11);
+  y += 16;
+  renderer.drawText('for food buffs. Buy supplies from shops with gold.', leftX, y, '#888888', 11);
+  y += 16;
+  renderer.drawText('Defeat the boss on each floor to descend deeper!', leftX, y, '#888888', 11);
+
+  renderer.drawText('[ESC] or [Enter] Back', CANVAS_WIDTH / 2, panelY + panelH - 18, '#555555', 11, 'center');
 }
 
 function renderDeath(renderer: Renderer, player: Player, meta: MetaSave): void {

@@ -150,17 +150,19 @@ export class Game {
   }
 
   private update(dt: number): void {
-    // Handle menu interactions
+    // Always process menu input (so ESC/I work when no menu is open)
+    const action = updateMenu(this.menu, this.input, this.player, this.meta);
+    if (action === 'restart') {
+      this.endRun();
+      return;
+    }
+    if (action === 'start_run') {
+      this.startNewRun();
+      return;
+    }
+
+    // If a menu is open, don't process gameplay
     if (this.menu.type !== 'none') {
-      const action = updateMenu(this.menu, this.input, this.player, this.meta);
-      if (action === 'restart') {
-        this.endRun();
-        return;
-      }
-      if (action === 'start_run') {
-        this.startNewRun();
-        return;
-      }
       this.input.endFrame();
       return;
     }
