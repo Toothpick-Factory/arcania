@@ -2,7 +2,7 @@ import { Renderer } from '../engine/renderer';
 import { Player } from '../entities/player';
 import { GameState, CANVAS_WIDTH, CANVAS_HEIGHT } from '../engine/types';
 import { DungeonMap } from '../systems/dungeon';
-import { BASE_SPELLS, findComboSpell } from '../data/spells';
+import { BASE_SPELLS, COMBO_SPELLS } from '../data/spells';
 import { getItemDef } from '../data/items';
 
 export function renderHUD(renderer: Renderer, player: Player, state: GameState): void {
@@ -39,25 +39,38 @@ export function renderHUD(renderer: Renderer, player: Player, state: GameState):
   renderer.drawText(`Items: ${totalItems}`, CANVAS_WIDTH - 100, 30, '#aaaaaa', 12);
 }
 
+function getSpellDef(elementId: string) {
+  return BASE_SPELLS.find((s) => s.id === elementId) ||
+    COMBO_SPELLS.find((s) => s.id === elementId);
+}
+
 function renderSpellBar(renderer: Renderer, player: Player): void {
-  const barY = CANVAS_HEIGHT - 50;
+  const barY = CANVAS_HEIGHT - 55;
   const barX = CANVAS_WIDTH / 2 - (player.spells.length * 44) / 2;
 
   for (let i = 0; i < player.spells.length; i++) {
     const spell = player.spells[i];
-    const baseDef = BASE_SPELLS.find((s) => s.id === spell.element);
-    if (!baseDef) continue;
+    const def = getSpellDef(spell.element);
+    if (!def) continue;
 
+    const isCombo = COMBO_SPELLS.some((c) => c.id === spell.element);
     const x = barX + i * 44;
     const isActive = i === player.activeSpellIndex;
     const onCooldown = player.spellCooldowns.has(spell.element);
 
-    // Background
-    renderer.drawRect(x, barY, 40, 40, isActive ? '#333344' : '#222222');
-    renderer.drawRectOutline(x, barY, 40, 40, isActive ? '#ffffff' : '#555555', isActive ? 2 : 1);
+    // Background — combo spells have a slightly different tint
+    renderer.drawRect(x, barY, 40, 40, isActive ? (isCombo ? '#333344' : '#333344') : '#222222');
+    renderer.drawRectOutline(x, barY, 40, 40, isActive ? '#ffffff' : (isCombo ? '#666699' : '#555555'), isActive ? 2 : 1);
 
     // Spell color indicator
-    renderer.drawRect(x + 4, barY + 4, 32, 32, onCooldown ? '#333333' : baseDef.color);
+    renderer.drawRect(x + 4, barY + 4, 32, 32, onCooldown ? '#333333' : def.color);
+
+    // Combo spells get a secondary color stripe
+    if (isCombo && !onCooldown) {
+      renderer.ctx.globalAlpha = 0.4;
+      renderer.drawRect(x + 4, barY + 28, 32, 8, def.secondaryColor);
+      renderer.ctx.globalAlpha = 1;
+    }
 
     // Cooldown overlay
     if (onCooldown) {
@@ -69,18 +82,30 @@ function renderSpellBar(renderer: Renderer, player: Player): void {
     // Level
     renderer.drawText(`${spell.level}`, x + 2, barY + 2, '#ffffff', 10);
 
-    // Hotkey
-    renderer.drawText(`${i + 1}`, x + 30, barY + 28, '#888888', 10);
+    // Hotkey number
+    if (i < 9) {
+      renderer.drawText(`${i + 1}`, x + 30, barY + 28, '#888888', 10);
+    }
 
-    // Combo indicator
-    if (player.comboSlot === spell.element) {
+    // Spell name below bar
+    if (isActive) {
+      renderer.drawText(def.name, x + 20, barY + 42, '#ffffff', 9, 'center');
+    }
+
+    // Combo selection indicator (yellow glow when this spell is selected for combo)
+    if (player.comboSlotIndex === i) {
       renderer.drawRectOutline(x - 2, barY - 2, 44, 44, '#ffff00', 2);
+      renderer.drawText('1st', x + 20, barY - 6, '#ffff00', 9, 'center');
     }
   }
 
   // Combo hint
   if (player.comboSlot) {
-    renderer.drawText('COMBO: Select 2nd spell with Shift+Click', CANVAS_WIDTH / 2, barY - 15, '#ffff00', 11, 'center');
+    const slotName = getSpellDef(player.comboSlot)?.name || player.comboSlot;
+    renderer.drawText(
+      `COMBO: ${slotName} selected — hold Shift + press another number`,
+      CANVAS_WIDTH / 2, barY - 18, '#ffff00', 11, 'center'
+    );
   }
 }
 

@@ -13,8 +13,9 @@ describe('Player creation', () => {
     expect(p.mana).toBe(80);
     expect(p.level).toBe(1);
     expect(p.gold).toBe(0);
-    expect(p.spells.length).toBe(1);
+    expect(p.spells.length).toBe(2);
     expect(p.spells[0].element).toBe('fire');
+    expect(p.spells[1].element).toBe('water');
   });
 });
 
@@ -115,23 +116,24 @@ describe('Player inventory', () => {
 });
 
 describe('Player spells', () => {
-  it('starts with fire spell', () => {
+  it('starts with fire and water spells', () => {
     const p = createPlayer();
     expect(hasSpell(p, 'fire')).toBe(true);
-    expect(hasSpell(p, 'water')).toBe(false);
+    expect(hasSpell(p, 'water')).toBe(true);
+    expect(hasSpell(p, 'ice')).toBe(false);
   });
 
   it('unlocks new spells', () => {
     const p = createPlayer();
-    unlockSpell(p, 'water');
-    expect(hasSpell(p, 'water')).toBe(true);
-    expect(p.spells.length).toBe(2);
+    unlockSpell(p, 'ice');
+    expect(hasSpell(p, 'ice')).toBe(true);
+    expect(p.spells.length).toBe(3);
   });
 
   it('does not duplicate spells', () => {
     const p = createPlayer();
     unlockSpell(p, 'fire');
-    expect(p.spells.length).toBe(1);
+    expect(p.spells.length).toBe(2);
   });
 });
 

@@ -17,7 +17,7 @@ import {
   DungeonMap, generateDungeon, getRoomCenterWorld, worldToTile,
   updateVisibility, findRoomAt
 } from './systems/dungeon';
-import { BASE_SPELLS, findComboSpell, SpellDef } from './data/spells';
+import { BASE_SPELLS, COMBO_SPELLS, findComboSpell, SpellDef } from './data/spells';
 import { getEnemiesForFloor, getBossForFloor, scaleEnemyForFloor, EnemyDef } from './data/enemies';
 import { MetaSave, loadMetaProgress, saveMetaProgress, updateMetaFromRun, getDefaultMeta } from './systems/save';
 import { generateLoot } from './systems/loot';
@@ -91,10 +91,25 @@ export class Game {
     this.player.speed += up.speedBonus;
     this.player.manaRegen += up.manaRegenBonus;
 
-    // Unlock previously discovered spells
+    // Unlock previously discovered base spells
     for (const element of this.meta.unlockedSpells) {
       if (!hasSpell(this.player, element)) {
         unlockSpell(this.player, element);
+      }
+    }
+
+    // Restore previously discovered combo spells
+    if (this.meta.discoveredCombos) {
+      for (const comboId of this.meta.discoveredCombos) {
+        if (!this.player.discoveredCombos.includes(comboId)) {
+          this.player.discoveredCombos.push(comboId);
+          this.player.spells.push({
+            element: comboId as any,
+            level: 1,
+            xp: 0,
+            xpToNext: 50,
+          });
+        }
       }
     }
 
@@ -186,20 +201,27 @@ export class Game {
       this.handleSpellCast();
     }
 
-    // Handle combo slot (Shift+number)
+    // Handle combo discovery (Shift+number to select two elements)
     if (this.input.isKeyDown('ShiftLeft') || this.input.isKeyDown('ShiftRight')) {
-      for (let i = 0; i < 6; i++) {
-        if (this.input.isKeyJustPressed(`Digit${i + 1}`) && i < this.player.spells.length) {
+      for (let i = 0; i < Math.min(6, this.player.spells.length); i++) {
+        if (this.input.isKeyJustPressed(`Digit${i + 1}`)) {
           const element = this.player.spells[i].element;
           if (this.player.comboSlot && this.player.comboSlot !== element) {
-            // Try combo cast
+            // Two different elements selected — try to discover/cast combo
             this.handleComboCast(this.player.comboSlot, element);
             this.player.comboSlot = null;
+            this.player.comboSlotIndex = null;
           } else {
+            // First element selected
             this.player.comboSlot = element;
+            this.player.comboSlotIndex = i;
+            this.addNotification(`Combo: ${element} selected — pick a 2nd element`, '#ffff44');
           }
         }
       }
+    } else if (this.player.comboSlot) {
+      // If shift released while combo slot is set, clear it
+      // (only clear on next frame so player can release/re-press)
     }
 
     // Handle interaction (F key)
@@ -352,51 +374,90 @@ export class Game {
     const spell = this.player.spells[this.player.activeSpellIndex];
     if (!spell) return;
 
-    const baseDef = BASE_SPELLS.find((s) => s.id === spell.element);
-    if (!baseDef) return;
+    // Look up spell definition — could be a base spell or a discovered combo spell
+    const spellDef: SpellDef | undefined =
+      BASE_SPELLS.find((s) => s.id === spell.element) ||
+      COMBO_SPELLS.find((s) => s.id === spell.element);
+    if (!spellDef) return;
 
     if (this.player.spellCooldowns.has(spell.element)) return;
-    if (this.player.mana < baseDef.manaCost) return;
+    if (this.player.mana < spellDef.manaCost) return;
 
     // Get direction to mouse
     const mouseWorld = this.renderer.screenToWorld(this.input.getMousePos());
     const dir = vec2Normalize(vec2Sub(mouseWorld, this.player.position));
     if (vec2Len(dir) === 0) return;
 
-    this.player.mana -= baseDef.manaCost;
-    this.player.spellCooldowns.set(spell.element, baseDef.cooldown);
+    this.player.mana -= spellDef.manaCost;
+    this.player.spellCooldowns.set(spell.element, spellDef.cooldown);
 
-    if (baseDef.projectileSpeed > 0) {
+    if (spellDef.projectileSpeed > 0) {
       this.projectiles.push(
-        createProjectile(baseDef, this.player.position, dir, this.player.baseDamage + getPlayerDamageBonus(this.player), spell.level)
+        createProjectile(spellDef, this.player.position, dir, this.player.baseDamage + getPlayerDamageBonus(this.player), spell.level)
       );
-    } else if (baseDef.aoeRadius > 0) {
-      // AoE centered on player or at target location
+    } else if (spellDef.aoeRadius > 0) {
       this.aoeEffects.push(
-        createAoeEffect(baseDef, this.player.position, this.player.baseDamage + getPlayerDamageBonus(this.player), spell.level)
+        createAoeEffect(spellDef, this.player.position, this.player.baseDamage + getPlayerDamageBonus(this.player), spell.level)
       );
     }
+
+    // Give spell XP on cast
+    addSpellXp(this.player, spell.element as any, 1);
   }
 
   private handleComboCast(el1: string, el2: string): void {
     const comboDef = findComboSpell(el1 as any, el2 as any);
     if (!comboDef) {
-      this.addNotification('No combo exists for those elements', '#ff4444');
+      this.addNotification('Those elements cannot be combined', '#ff4444');
       return;
     }
 
-    const comboKey = `combo_${comboDef.id}`;
-    if (this.player.spellCooldowns.has(comboKey)) return;
+    // Check if already discovered
+    const alreadyDiscovered = this.player.discoveredCombos.includes(comboDef.id);
+
+    if (!alreadyDiscovered) {
+      // Discover the combo spell — add it permanently to the spell bar
+      this.player.discoveredCombos.push(comboDef.id);
+      this.player.spells.push({
+        element: comboDef.id as any, // combo spells use their id as element key
+        level: 1,
+        xp: 0,
+        xpToNext: 50,
+      });
+
+      // Track in meta so it persists across runs
+      if (!this.meta.discoveredCombos) {
+        this.meta.discoveredCombos = [];
+      }
+      if (!this.meta.discoveredCombos.includes(comboDef.id)) {
+        this.meta.discoveredCombos.push(comboDef.id);
+      }
+
+      this.addNotification(`NEW SPELL DISCOVERED: ${comboDef.name}!`, '#ffff00');
+      this.addNotification(`${comboDef.description}`, comboDef.color);
+      this.addNotification(`Added to spell bar as slot ${this.player.spells.length}`, '#aaaaaa');
+
+      // Give XP to both source element spells
+      addSpellXp(this.player, el1 as any, 10);
+      addSpellXp(this.player, el2 as any, 10);
+
+      // Also fire off the combo spell immediately as a reward
+      this.castComboSpell(comboDef);
+    } else {
+      this.addNotification(`${comboDef.name} already discovered!`, '#888888');
+    }
+  }
+
+  private castComboSpell(comboDef: SpellDef): void {
     if (this.player.mana < comboDef.manaCost) {
-      this.addNotification('Not enough mana!', '#4444ff');
-      return;
+      return; // silently skip if not enough mana for the freebie cast
     }
 
     const mouseWorld = this.renderer.screenToWorld(this.input.getMousePos());
     const dir = vec2Normalize(vec2Sub(mouseWorld, this.player.position));
 
     this.player.mana -= comboDef.manaCost;
-    this.player.spellCooldowns.set(comboKey, comboDef.cooldown);
+    this.player.spellCooldowns.set(comboDef.id, comboDef.cooldown);
 
     if (comboDef.projectileSpeed > 0) {
       this.projectiles.push(
@@ -408,12 +469,6 @@ export class Game {
         createAoeEffect(comboDef, comboDef.range > 0 ? mouseWorld : this.player.position, this.player.baseDamage + getPlayerDamageBonus(this.player), 1)
       );
     }
-
-    this.addNotification(`${comboDef.name}!`, comboDef.color);
-
-    // Give XP to both element spells
-    addSpellXp(this.player, el1 as any, 5);
-    addSpellXp(this.player, el2 as any, 5);
   }
 
   private handleInteraction(): void {

@@ -8,6 +8,7 @@ export interface MetaSave {
   bestFloor: number;
   totalGoldEarned: number;
   unlockedSpells: SpellElement[];
+  discoveredCombos: string[];
   discoveredRecipes: string[];
   permanentUpgrades: PermanentUpgrades;
   lastSaveTime: number;
@@ -26,7 +27,8 @@ export function getDefaultMeta(): MetaSave {
     totalRuns: 0,
     bestFloor: 0,
     totalGoldEarned: 0,
-    unlockedSpells: ['fire'],
+    unlockedSpells: ['fire', 'water'],
+    discoveredCombos: [],
     discoveredRecipes: [],
     permanentUpgrades: {
       maxHpBonus: 0,

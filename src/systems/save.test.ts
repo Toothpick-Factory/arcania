@@ -8,6 +8,8 @@ describe('Save system', () => {
     expect(meta.totalRuns).toBe(0);
     expect(meta.bestFloor).toBe(0);
     expect(meta.unlockedSpells).toContain('fire');
+    expect(meta.unlockedSpells).toContain('water');
+    expect(meta.discoveredCombos).toHaveLength(0);
     expect(meta.discoveredRecipes).toHaveLength(0);
   });
 
@@ -15,13 +17,13 @@ describe('Save system', () => {
     const meta = getDefaultMeta();
     const player = createPlayer();
     player.gold = 50;
-    unlockSpell(player, 'water');
+    unlockSpell(player, 'ice');
 
     updateMetaFromRun(meta, player, 3);
     expect(meta.totalRuns).toBe(1);
     expect(meta.bestFloor).toBe(3);
     expect(meta.totalGoldEarned).toBe(50);
-    expect(meta.unlockedSpells).toContain('water');
+    expect(meta.unlockedSpells).toContain('ice');
   });
 
   it('bestFloor only increases', () => {

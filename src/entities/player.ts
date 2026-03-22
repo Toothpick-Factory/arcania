@@ -45,7 +45,9 @@ export interface Player {
   spells: PlayerSpell[];
   activeSpellIndex: number;
   comboSlot: SpellElement | null;
+  comboSlotIndex: number | null;
   spellCooldowns: Map<string, number>;
+  discoveredCombos: string[]; // combo spell ids that have been unlocked
   // Inventory
   inventory: InventoryItem[];
   // Buffs
@@ -78,10 +80,13 @@ export function createPlayer(): Player {
     gold: 0,
     spells: [
       { element: 'fire', level: 1, xp: 0, xpToNext: 30 },
+      { element: 'water', level: 1, xp: 0, xpToNext: 30 },
     ],
     activeSpellIndex: 0,
     comboSlot: null,
+    comboSlotIndex: null,
     spellCooldowns: new Map(),
+    discoveredCombos: [],
     inventory: [],
     activeBuffs: [],
     totalRuns: 0,
@@ -173,11 +178,13 @@ export function updatePlayer(player: Player, input: InputManager, dungeon: Dunge
     player.comboSlot = null;
   }
 
-  // Number keys for spell selection
-  for (let i = 0; i < 6; i++) {
-    if (input.isKeyJustPressed(`Digit${i + 1}`) && i < player.spells.length) {
-      player.activeSpellIndex = i;
-      player.comboSlot = null;
+  // Number keys for spell selection (only when Shift is NOT held — Shift+Number is for combos)
+  if (!input.isKeyDown('ShiftLeft') && !input.isKeyDown('ShiftRight')) {
+    for (let i = 0; i < 6; i++) {
+      if (input.isKeyJustPressed(`Digit${i + 1}`) && i < player.spells.length) {
+        player.activeSpellIndex = i;
+        player.comboSlot = null;
+      }
     }
   }
 }
