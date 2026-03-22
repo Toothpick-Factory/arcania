@@ -345,11 +345,9 @@ function renderControls(renderer: Renderer): void {
   row('D / Arrow Right', 'Move right');
 
   section('COMBAT');
-  row('Left Click', 'Cast active spell toward cursor');
-  row('Q', 'Previous spell');
-  row('E', 'Next spell');
-  row('1 - 6', 'Select spell by slot');
-  row('Shift + Number', '1st element, then Shift + another = combo');
+  row('1 - 9', 'Queue magic type for combo (or set active)');
+  row('Left Click', 'Cast queued combo or active spell');
+  row('Q', 'Clear combo queue');
 
   section('INTERACTION');
   row('F', 'Interact (shops, cooking, stairs)');
@@ -361,13 +359,13 @@ function renderControls(renderer: Renderer): void {
   row('Enter / Space', 'Confirm selection');
 
   section('TIPS');
-  renderer.drawText('Hold Shift + press two different spell numbers to', leftX, y, '#888888', 11);
+  renderer.drawText('Press two number keys to queue a combo, then click', leftX, y, '#888888', 11);
   y += 16;
-  renderer.drawText('DISCOVER new combo spells! They get added to your', leftX, y, '#888888', 11);
+  renderer.drawText('to cast. Valid combos discover new spells! Invalid', leftX, y, '#888888', 11);
   y += 16;
-  renderer.drawText('spell bar permanently. Cook food at cooking stations', leftX, y, '#888888', 11);
+  renderer.drawText('combos fizzle. Press Q to clear the queue. Cook food', leftX, y, '#888888', 11);
   y += 16;
-  renderer.drawText('for buffs. Defeat the boss on each floor to descend!', leftX, y, '#888888', 11);
+  renderer.drawText('at stations for buffs. Defeat bosses to go deeper!', leftX, y, '#888888', 11);
 
   renderer.drawText('[ESC] or [Enter] Back', CANVAS_WIDTH / 2, panelY + panelH - 18, '#555555', 11, 'center');
 }
@@ -413,6 +411,6 @@ function renderHub(renderer: Renderer, menu: MenuState, player: Player, meta: Me
   }
 
   renderer.drawText('WASD to move | Mouse to aim | Click to cast', CANVAS_WIDTH / 2, 440, '#555555', 12, 'center');
-  renderer.drawText('Q/E or 1-6 to switch spells | Shift+Num+Num to discover combos | I for inventory', CANVAS_WIDTH / 2, 460, '#555555', 12, 'center');
+  renderer.drawText('1-9 to queue magic types | Click to cast combo | Q to clear | I for inventory', CANVAS_WIDTH / 2, 460, '#555555', 12, 'center');
   renderer.drawText('F to interact | ESC to pause', CANVAS_WIDTH / 2, 480, '#555555', 12, 'center');
 }

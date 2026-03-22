@@ -32,9 +32,6 @@ export interface Player {
   // Stats
   hp: number;
   maxHp: number;
-  mana: number;
-  maxMana: number;
-  manaRegen: number;
   speed: number;
   baseDamage: number;
   defense: number;
@@ -47,9 +44,8 @@ export interface Player {
   gold: number;
   // Magic
   magics: PlayerMagic[];
-  activeMagicIndex: number;
-  comboSlot: MagicType | null;
-  comboSlotIndex: number | null;
+  activeMagicIndex: number;  // last selected base magic (for solo cast)
+  comboQueue: MagicType[];   // queued magic types for combo casting
   spellCooldowns: Map<string, number>;
   discoveredCombos: string[];
   // Inventory
@@ -72,9 +68,6 @@ export function createPlayer(): Player {
     height: 20,
     hp: 100,
     maxHp: 100,
-    mana: 80,
-    maxMana: 80,
-    manaRegen: 2,
     speed: 150,
     baseDamage: 10,
     defense: 0,
@@ -86,8 +79,7 @@ export function createPlayer(): Player {
     gold: 0,
     magics: STARTING_MAGIC_TYPES.map((mt) => ({ magicType: mt, xp: 0 })),
     activeMagicIndex: 0,
-    comboSlot: null,
-    comboSlotIndex: null,
+    comboQueue: [],
     spellCooldowns: new Map(),
     discoveredCombos: [],
     inventory: [],
@@ -138,10 +130,6 @@ export function updatePlayer(player: Player, input: InputManager, dungeon: Dunge
     player.facing = { x: move.x, y: move.y };
   }
 
-  // Mana regeneration
-  const buffManaRegen = getBuffTotal(player, 'manaRegenBonus');
-  player.mana = Math.min(player.maxMana, player.mana + (player.manaRegen + buffManaRegen) * dt);
-
   // Update cooldowns
   for (const [key, val] of player.spellCooldowns.entries()) {
     const newVal = val - dt;
@@ -178,27 +166,22 @@ export function updatePlayer(player: Player, input: InputManager, dungeon: Dunge
     player.invincibleTimer -= dt;
   }
 
-  // Magic cycling with Q/E
-  if (input.isKeyJustPressed('KeyQ') && player.magics.length > 0) {
-    player.activeMagicIndex = (player.activeMagicIndex - 1 + player.magics.length) % player.magics.length;
-    player.comboSlot = null;
-    player.comboSlotIndex = null;
-  }
-  if (input.isKeyJustPressed('KeyE') && player.magics.length > 0) {
-    player.activeMagicIndex = (player.activeMagicIndex + 1) % player.magics.length;
-    player.comboSlot = null;
-    player.comboSlotIndex = null;
+  // Number keys queue magic types for combo casting
+  for (let i = 0; i < 9; i++) {
+    if (input.isKeyJustPressed(`Digit${i + 1}`) && i < player.magics.length) {
+      const mt = player.magics[i].magicType;
+      // Add to combo queue (max 2 elements for now)
+      if (player.comboQueue.length < 2) {
+        player.comboQueue.push(mt);
+      }
+      // Always update the active magic index to the last pressed
+      player.activeMagicIndex = i;
+    }
   }
 
-  // Number keys for magic selection (only when Shift is NOT held)
-  if (!input.isKeyDown('ShiftLeft') && !input.isKeyDown('ShiftRight')) {
-    for (let i = 0; i < 9; i++) {
-      if (input.isKeyJustPressed(`Digit${i + 1}`) && i < player.magics.length) {
-        player.activeMagicIndex = i;
-        player.comboSlot = null;
-        player.comboSlotIndex = null;
-      }
-    }
+  // Q clears the combo queue
+  if (input.isKeyJustPressed('KeyQ')) {
+    player.comboQueue = [];
   }
 }
 
@@ -251,8 +234,6 @@ export function addXp(player: Player, amount: number): boolean {
     player.xpToNext = Math.floor(player.xpToNext * 1.4);
     player.maxHp += 10;
     player.hp = player.maxHp;
-    player.maxMana += 5;
-    player.mana = player.maxMana;
     player.baseDamage += 2;
     return true;
   }

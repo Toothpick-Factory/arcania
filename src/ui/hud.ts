@@ -20,18 +20,19 @@ export function renderHUD(renderer: Renderer, player: Player, state: GameState):
     renderer.drawText(`Shield: ${player.shield}`, 15, 12, '#88ccff', 14);
   }
 
-  // Mana bar
-  renderer.drawBar(10, 35, 200, 16, player.mana / player.maxMana, '#2244cc', '#111144');
-  renderer.drawText(`MP: ${Math.floor(player.mana)}/${player.maxMana}`, 15, 37, '#ffffff', 12);
-
   // XP bar
-  renderer.drawBar(10, 55, 200, 10, player.xp / player.xpToNext, '#22aa22', '#114411');
+  renderer.drawBar(10, 35, 200, 10, player.xp / player.xpToNext, '#22aa22', '#114411');
+
+  // Combo queue display
+  if (player.comboQueue.length > 0) {
+    renderComboQueue(renderer, player);
+  }
 
   // Level
   renderer.drawText(`Lv.${player.level}`, 215, 10, '#ffcc00', 16);
 
   // Gold
-  renderer.drawText(`Gold: ${player.gold}`, 215, 35, '#ffdd44', 14);
+  renderer.drawText(`Gold: ${player.gold}`, 215, 30, '#ffdd44', 14);
 
   // Floor
   renderer.drawText(`Floor ${state.floor}`, CANVAS_WIDTH - 100, 10, '#aaaaaa', 14);
@@ -123,20 +124,47 @@ function renderMagicBar(renderer: Renderer, player: Player): void {
       renderer.drawText(name, x + slotSize / 2, barY + slotSize + 2, '#ffffff', 9, 'center');
     }
 
-    // Combo selection indicator
-    if (player.comboSlotIndex === i) {
+    // Highlight if this magic type is in the combo queue
+    const queueIdx = player.comboQueue.indexOf(magic.magicType);
+    if (queueIdx >= 0) {
       renderer.drawRectOutline(x - 2, barY - 2, slotSize + 4, slotSize + 4, '#ffff00', 2);
-      renderer.drawText('1st', x + slotSize / 2, barY - 8, '#ffff00', 9, 'center');
+      renderer.drawText(`#${queueIdx + 1}`, x + slotSize / 2, barY - 8, '#ffff00', 9, 'center');
+    }
+  }
+}
+
+function renderComboQueue(renderer: Renderer, player: Player): void {
+  const queueX = CANVAS_WIDTH / 2;
+  const queueY = 55;
+
+  // Background
+  const totalW = player.comboQueue.length * 32 + (player.comboQueue.length - 1) * 8 + 20;
+  renderer.ctx.globalAlpha = 0.8;
+  renderer.drawRect(queueX - totalW / 2, queueY - 4, totalW, 32, '#111122');
+  renderer.drawRectOutline(queueX - totalW / 2, queueY - 4, totalW, 32, '#ffff44');
+  renderer.ctx.globalAlpha = 1;
+
+  renderer.drawText('COMBO:', queueX - totalW / 2 - 50, queueY + 2, '#ffff44', 12);
+
+  for (let i = 0; i < player.comboQueue.length; i++) {
+    const mt = player.comboQueue[i];
+    const color = MAGIC_TYPE_COLORS[mt as MagicType] || '#888888';
+    const name = MAGIC_TYPE_NAMES[mt as MagicType] || mt;
+    const x = queueX - totalW / 2 + 10 + i * 40;
+
+    renderer.drawRect(x, queueY, 24, 24, color);
+    renderer.drawRectOutline(x, queueY, 24, 24, '#ffffff');
+    renderer.drawText(name.substring(0, 3), x + 12, queueY + 6, '#ffffff', 9, 'center');
+
+    if (i < player.comboQueue.length - 1) {
+      renderer.drawText('+', x + 30, queueY + 4, '#ffff44', 14);
     }
   }
 
-  // Combo hint
-  if (player.comboSlot) {
-    const slotName = MAGIC_TYPE_NAMES[player.comboSlot as MagicType] || player.comboSlot;
-    renderer.drawText(
-      `COMBO: ${slotName} selected — hold Shift + press another number`,
-      CANVAS_WIDTH / 2, barY - 16, '#ffff00', 11, 'center'
-    );
+  if (player.comboQueue.length === 1) {
+    renderer.drawText('Press another number or click to cast', queueX, queueY + 30, '#888888', 10, 'center');
+  } else if (player.comboQueue.length >= 2) {
+    renderer.drawText('Click to cast combo!', queueX, queueY + 30, '#ffff44', 10, 'center');
   }
 }
 

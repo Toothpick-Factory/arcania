@@ -10,7 +10,6 @@ describe('Player creation', () => {
     const p = createPlayer();
     expect(p.hp).toBe(100);
     expect(p.maxHp).toBe(100);
-    expect(p.mana).toBe(80);
     expect(p.level).toBe(1);
     expect(p.gold).toBe(0);
     expect(p.magics.length).toBe(2); // fire + arcane

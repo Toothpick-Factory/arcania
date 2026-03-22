@@ -88,11 +88,8 @@ export class Game {
     const up = this.meta.permanentUpgrades;
     this.player.maxHp += up.maxHpBonus;
     this.player.hp = this.player.maxHp;
-    this.player.maxMana += up.maxManaBonus;
-    this.player.mana = this.player.maxMana;
     this.player.baseDamage += up.damageBonus;
     this.player.speed += up.speedBonus;
-    this.player.manaRegen += up.manaRegenBonus;
 
     // Unlock previously discovered magic types
     for (const mt of this.meta.unlockedMagics) {
@@ -174,28 +171,9 @@ export class Game {
     const playerTile = worldToTile(this.player.position.x, this.player.position.y);
     updateVisibility(this.dungeon, playerTile.x, playerTile.y);
 
-    // Spell casting
+    // Spell casting — click fires whatever is queued
     if (this.input.isMouseJustClicked()) {
       this.handleSpellCast();
-    }
-
-    // Combo discovery (Shift+number to select two magic types)
-    if (this.input.isKeyDown('ShiftLeft') || this.input.isKeyDown('ShiftRight')) {
-      for (let i = 0; i < Math.min(9, this.player.magics.length); i++) {
-        if (this.input.isKeyJustPressed(`Digit${i + 1}`)) {
-          const mt = this.player.magics[i].magicType;
-          if (this.player.comboSlot && this.player.comboSlot !== mt) {
-            this.handleComboCast(this.player.comboSlot, mt);
-            this.player.comboSlot = null;
-            this.player.comboSlotIndex = null;
-          } else {
-            this.player.comboSlot = mt as MagicType;
-            this.player.comboSlotIndex = i;
-            const name = MAGIC_TYPE_NAMES[mt as MagicType] || mt;
-            this.addNotification(`Combo: ${name} selected — pick a 2nd magic type`, '#ffff44');
-          }
-        }
-      }
     }
 
     // Interaction
@@ -340,96 +318,77 @@ export class Game {
   }
 
   private handleSpellCast(): void {
-    const magic = this.player.magics[this.player.activeMagicIndex];
-    if (!magic) return;
+    const queue = this.player.comboQueue;
 
-    // Resolve spell: base magic tier spell or combo spell
-    const spellDef = getActiveSpell(this.player);
-    if (!spellDef) return;
+    if (queue.length >= 2) {
+      // Combo attempt — check if it's a valid combo
+      const comboDef = findComboSpell(queue[0], queue[1]);
+      if (comboDef) {
+        // Valid combo — cast it!
+        if (!this.player.spellCooldowns.has(comboDef.id)) {
+          this.fireSpell(comboDef);
 
-    if (this.player.spellCooldowns.has(spellDef.id)) return;
-    if (this.player.mana < spellDef.manaCost) return;
+          // Discover if new
+          if (!this.player.discoveredCombos.includes(comboDef.id)) {
+            this.player.discoveredCombos.push(comboDef.id);
+            if (!this.meta.discoveredCombos) this.meta.discoveredCombos = [];
+            if (!this.meta.discoveredCombos.includes(comboDef.id)) {
+              this.meta.discoveredCombos.push(comboDef.id);
+            }
+            this.addNotification(`COMBO DISCOVERED: ${comboDef.name}!`, '#ffff00');
+            this.addNotification(`${comboDef.description}`, comboDef.color);
+          }
 
+          // XP to both source magic types
+          addMagicXp(this.player, queue[0], 5);
+          addMagicXp(this.player, queue[1], 5);
+        }
+      } else {
+        // Invalid combo — fizzle
+        this.addNotification('Spell fizzled!', '#ff4444');
+      }
+      // Clear the queue after any combo attempt
+      this.player.comboQueue = [];
+    } else if (queue.length === 1) {
+      // Single element queued — cast that base spell and clear queue
+      const magic = this.player.magics.find((m) => m.magicType === queue[0]);
+      if (magic) {
+        const spellDef = getActiveSpellForMagic(queue[0], magic.xp);
+        if (spellDef && !this.player.spellCooldowns.has(spellDef.id)) {
+          this.fireSpell(spellDef);
+          addMagicXp(this.player, queue[0], 1);
+        }
+      }
+      this.player.comboQueue = [];
+    } else {
+      // No queue — cast the active (last selected) base magic
+      const magic = this.player.magics[this.player.activeMagicIndex];
+      if (!magic) return;
+      const spellDef = getActiveSpellForMagic(magic.magicType as MagicType, magic.xp);
+      if (!spellDef) return;
+      if (this.player.spellCooldowns.has(spellDef.id)) return;
+      this.fireSpell(spellDef);
+      addMagicXp(this.player, magic.magicType, 1);
+    }
+  }
+
+  private fireSpell(spellDef: SpellDef): void {
     const mouseWorld = this.renderer.screenToWorld(this.input.getMousePos());
     const dir = vec2Normalize(vec2Sub(mouseWorld, this.player.position));
     if (vec2Len(dir) === 0) return;
 
-    this.player.mana -= spellDef.manaCost;
     this.player.spellCooldowns.set(spellDef.id, spellDef.cooldown);
 
-    // Apply self-effects (shields, heals)
-    if (spellDef.shieldAmount) {
-      addShield(this.player, spellDef.shieldAmount, spellDef.shieldDuration || 5);
-    }
-    if (spellDef.healAmount) {
-      healPlayer(this.player, spellDef.healAmount);
-    }
+    // Self-effects
+    if (spellDef.shieldAmount) addShield(this.player, spellDef.shieldAmount, spellDef.shieldDuration || 5);
+    if (spellDef.healAmount) healPlayer(this.player, spellDef.healAmount);
 
-    // Cast based on behavior
+    // Cast
     if (spellDef.projectileSpeed > 0) {
       this.projectiles.push(
         createProjectile(spellDef, this.player.position, dir, this.player.baseDamage + getPlayerDamageBonus(this.player), 1)
       );
     } else if (spellDef.aoeRadius > 0) {
-      const pos = spellDef.range > 0 ? mouseWorld : this.player.position;
-      this.aoeEffects.push(
-        createAoeEffect(spellDef, pos, this.player.baseDamage + getPlayerDamageBonus(this.player), 1)
-      );
-    }
-
-    // Magic XP on cast
-    addMagicXp(this.player, magic.magicType, 1);
-  }
-
-  private handleComboCast(el1: string, el2: string): void {
-    const comboDef = findComboSpell(el1 as MagicType, el2 as MagicType);
-    if (!comboDef) {
-      this.addNotification('Those magic types cannot be combined', '#ff4444');
-      return;
-    }
-
-    const alreadyDiscovered = this.player.discoveredCombos.includes(comboDef.id);
-
-    if (!alreadyDiscovered) {
-      this.player.discoveredCombos.push(comboDef.id);
-      this.player.magics.push({ magicType: comboDef.id as any, xp: 0 });
-
-      if (!this.meta.discoveredCombos) this.meta.discoveredCombos = [];
-      if (!this.meta.discoveredCombos.includes(comboDef.id)) {
-        this.meta.discoveredCombos.push(comboDef.id);
-      }
-
-      this.addNotification(`NEW SPELL DISCOVERED: ${comboDef.name}!`, '#ffff00');
-      this.addNotification(`${comboDef.description}`, comboDef.color);
-
-      addMagicXp(this.player, el1, 15);
-      addMagicXp(this.player, el2, 15);
-
-      // Free cast on discovery
-      this.castSpellDirect(comboDef);
-    } else {
-      this.addNotification(`${comboDef.name} already discovered!`, '#888888');
-    }
-  }
-
-  private castSpellDirect(spellDef: SpellDef): void {
-    if (this.player.mana < spellDef.manaCost) return;
-
-    const mouseWorld = this.renderer.screenToWorld(this.input.getMousePos());
-    const dir = vec2Normalize(vec2Sub(mouseWorld, this.player.position));
-
-    this.player.mana -= spellDef.manaCost;
-    this.player.spellCooldowns.set(spellDef.id, spellDef.cooldown);
-
-    if (spellDef.shieldAmount) addShield(this.player, spellDef.shieldAmount, spellDef.shieldDuration || 5);
-    if (spellDef.healAmount) healPlayer(this.player, spellDef.healAmount);
-
-    if (spellDef.projectileSpeed > 0) {
-      this.projectiles.push(
-        createProjectile(spellDef, this.player.position, dir, this.player.baseDamage + getPlayerDamageBonus(this.player), 1)
-      );
-    }
-    if (spellDef.aoeRadius > 0 && spellDef.projectileSpeed === 0) {
       const pos = spellDef.range > 0 ? mouseWorld : this.player.position;
       this.aoeEffects.push(
         createAoeEffect(spellDef, pos, this.player.baseDamage + getPlayerDamageBonus(this.player), 1)
@@ -508,7 +467,6 @@ export class Game {
     updateMetaFromRun(this.meta, this.player, this.state.floor);
     const up = this.meta.permanentUpgrades;
     up.maxHpBonus += 2;
-    up.maxManaBonus += 1;
     up.damageBonus += 1;
     saveMetaProgress(this.meta);
     this.state.scene = 'title';
