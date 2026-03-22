@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
-  createPlayer, damagePlayer, healPlayer, addXp, addSpellXp,
+  createPlayer, damagePlayer, healPlayer, addXp, addMagicXp,
   addItemToInventory, removeItemFromInventory, getItemCount,
-  unlockSpell, hasSpell, applyFoodEffect
+  unlockMagic, hasMagic, applyFoodEffect, addShield,
 } from './player';
 
 describe('Player creation', () => {
@@ -13,9 +13,9 @@ describe('Player creation', () => {
     expect(p.mana).toBe(80);
     expect(p.level).toBe(1);
     expect(p.gold).toBe(0);
-    expect(p.spells.length).toBe(2);
-    expect(p.spells[0].element).toBe('fire');
-    expect(p.spells[1].element).toBe('water');
+    expect(p.magics.length).toBe(2); // fire + arcane
+    expect(p.magics[0].magicType).toBe('fire');
+    expect(p.magics[1].magicType).toBe('arcane');
   });
 });
 
@@ -30,7 +30,7 @@ describe('Player damage/heal', () => {
     const p = createPlayer();
     damagePlayer(p, 30);
     expect(p.invincibleTimer).toBeGreaterThan(0);
-    damagePlayer(p, 30); // should be blocked
+    damagePlayer(p, 30);
     expect(p.hp).toBe(70);
   });
 
@@ -38,7 +38,23 @@ describe('Player damage/heal', () => {
     const p = createPlayer();
     p.defense = 5;
     damagePlayer(p, 30);
-    expect(p.hp).toBe(75); // 30-5=25 damage
+    expect(p.hp).toBe(75);
+  });
+
+  it('shield absorbs damage', () => {
+    const p = createPlayer();
+    addShield(p, 20, 5);
+    damagePlayer(p, 15);
+    expect(p.shield).toBe(5);
+    expect(p.hp).toBe(100);
+  });
+
+  it('shield overflow goes to hp', () => {
+    const p = createPlayer();
+    addShield(p, 10, 5);
+    damagePlayer(p, 25);
+    expect(p.shield).toBe(0);
+    expect(p.hp).toBe(85); // 25 - 10 shield = 15 damage
   });
 
   it('heals correctly', () => {
@@ -72,10 +88,17 @@ describe('Player XP and leveling', () => {
     expect(p.maxHp).toBeGreaterThan(100);
   });
 
-  it('spell XP works', () => {
+  it('magic XP accumulates', () => {
     const p = createPlayer();
-    addSpellXp(p, 'fire', 30);
-    expect(p.spells[0].level).toBe(2);
+    addMagicXp(p, 'fire', 20);
+    expect(p.magics[0].xp).toBe(20);
+  });
+
+  it('magic XP triggers tier unlock', () => {
+    const p = createPlayer();
+    const result = addMagicXp(p, 'fire', 40); // threshold for tier 2
+    expect(result.leveled).toBe(true);
+    expect(result.newTier).toBe(2);
   });
 });
 
@@ -115,25 +138,25 @@ describe('Player inventory', () => {
   });
 });
 
-describe('Player spells', () => {
-  it('starts with fire and water spells', () => {
+describe('Player magic types', () => {
+  it('starts with fire and arcane', () => {
     const p = createPlayer();
-    expect(hasSpell(p, 'fire')).toBe(true);
-    expect(hasSpell(p, 'water')).toBe(true);
-    expect(hasSpell(p, 'ice')).toBe(false);
+    expect(hasMagic(p, 'fire')).toBe(true);
+    expect(hasMagic(p, 'arcane')).toBe(true);
+    expect(hasMagic(p, 'ice')).toBe(false);
   });
 
-  it('unlocks new spells', () => {
+  it('unlocks new magic types', () => {
     const p = createPlayer();
-    unlockSpell(p, 'ice');
-    expect(hasSpell(p, 'ice')).toBe(true);
-    expect(p.spells.length).toBe(3);
+    unlockMagic(p, 'ice');
+    expect(hasMagic(p, 'ice')).toBe(true);
+    expect(p.magics.length).toBe(3);
   });
 
-  it('does not duplicate spells', () => {
+  it('does not duplicate magic types', () => {
     const p = createPlayer();
-    unlockSpell(p, 'fire');
-    expect(p.spells.length).toBe(2);
+    unlockMagic(p, 'fire');
+    expect(p.magics.length).toBe(2);
   });
 });
 

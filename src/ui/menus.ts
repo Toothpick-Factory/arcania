@@ -395,7 +395,8 @@ function renderHub(renderer: Renderer, menu: MenuState, player: Player, meta: Me
 
   renderer.drawText(`Best Floor: ${meta.bestFloor}`, CANVAS_WIDTH / 2, 200, '#aaaaaa', 14, 'center');
   renderer.drawText(`Total Runs: ${meta.totalRuns}`, CANVAS_WIDTH / 2, 220, '#aaaaaa', 14, 'center');
-  renderer.drawText(`Spells Unlocked: ${meta.unlockedSpells.length}/6`, CANVAS_WIDTH / 2, 240, '#aaaaaa', 14, 'center');
+  renderer.drawText(`Magic Types: ${meta.unlockedMagics.length}/15`, CANVAS_WIDTH / 2, 240, '#aaaaaa', 14, 'center');
+  renderer.drawText(`Combos Discovered: ${meta.discoveredCombos.length}`, CANVAS_WIDTH / 2, 258, '#aaaaaa', 14, 'center');
   renderer.drawText(`Recipes Discovered: ${meta.discoveredRecipes.length}`, CANVAS_WIDTH / 2, 260, '#aaaaaa', 14, 'center');
 
   const options = ['Enter the Dungeon'];

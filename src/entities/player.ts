@@ -2,13 +2,15 @@ import { Vec2, TILE_SIZE } from '../engine/types';
 import { InputManager } from '../engine/input';
 import { DungeonMap, isTileWalkable, worldToTile } from '../systems/dungeon';
 import { FoodEffect } from '../data/items';
-import { SpellElement } from '../data/spells';
+import {
+  MagicType, SpellTier, STARTING_MAGIC_TYPES,
+  getHighestUnlockedTier, getActiveSpellForMagic, getSpellById, SpellDef,
+} from '../data/spells';
 
-export interface PlayerSpell {
-  element: SpellElement;
-  level: number;
+export interface PlayerMagic {
+  magicType: MagicType;
   xp: number;
-  xpToNext: number;
+  selectedTier?: SpellTier; // player can choose to cast a lower tier
 }
 
 export interface InventoryItem {
@@ -36,18 +38,20 @@ export interface Player {
   speed: number;
   baseDamage: number;
   defense: number;
+  shield: number;
+  shieldTimer: number;
   // Progression
   level: number;
   xp: number;
   xpToNext: number;
   gold: number;
-  // Spells
-  spells: PlayerSpell[];
-  activeSpellIndex: number;
-  comboSlot: SpellElement | null;
+  // Magic
+  magics: PlayerMagic[];
+  activeMagicIndex: number;
+  comboSlot: MagicType | null;
   comboSlotIndex: number | null;
   spellCooldowns: Map<string, number>;
-  discoveredCombos: string[]; // combo spell ids that have been unlocked
+  discoveredCombos: string[];
   // Inventory
   inventory: InventoryItem[];
   // Buffs
@@ -74,15 +78,14 @@ export function createPlayer(): Player {
     speed: 150,
     baseDamage: 10,
     defense: 0,
+    shield: 0,
+    shieldTimer: 0,
     level: 1,
     xp: 0,
     xpToNext: 50,
     gold: 0,
-    spells: [
-      { element: 'fire', level: 1, xp: 0, xpToNext: 30 },
-      { element: 'water', level: 1, xp: 0, xpToNext: 30 },
-    ],
-    activeSpellIndex: 0,
+    magics: STARTING_MAGIC_TYPES.map((mt) => ({ magicType: mt, xp: 0 })),
+    activeMagicIndex: 0,
     comboSlot: null,
     comboSlotIndex: null,
     spellCooldowns: new Map(),
@@ -105,7 +108,6 @@ export function updatePlayer(player: Player, input: InputManager, dungeon: Dunge
   const newX = player.position.x + move.x * totalSpeed * dt;
   const newY = player.position.y + move.y * totalSpeed * dt;
 
-  // Collision check with tiles
   const halfW = player.width / 2;
   const halfH = player.height / 2;
 
@@ -150,11 +152,19 @@ export function updatePlayer(player: Player, input: InputManager, dungeon: Dunge
     }
   }
 
+  // Update shield
+  if (player.shieldTimer > 0) {
+    player.shieldTimer -= dt;
+    if (player.shieldTimer <= 0) {
+      player.shield = 0;
+      player.shieldTimer = 0;
+    }
+  }
+
   // Update buffs
   for (let i = player.activeBuffs.length - 1; i >= 0; i--) {
     player.activeBuffs[i].remainingTime -= dt;
     if (player.activeBuffs[i].remainingTime <= 0) {
-      // Remove max hp bonus when buff expires
       if (player.activeBuffs[i].effect.maxHpBonus) {
         player.maxHp -= player.activeBuffs[i].effect.maxHpBonus!;
         player.hp = Math.min(player.hp, player.maxHp);
@@ -168,30 +178,57 @@ export function updatePlayer(player: Player, input: InputManager, dungeon: Dunge
     player.invincibleTimer -= dt;
   }
 
-  // Spell cycling with Q/E
-  if (input.isKeyJustPressed('KeyQ') && player.spells.length > 0) {
-    player.activeSpellIndex = (player.activeSpellIndex - 1 + player.spells.length) % player.spells.length;
+  // Magic cycling with Q/E
+  if (input.isKeyJustPressed('KeyQ') && player.magics.length > 0) {
+    player.activeMagicIndex = (player.activeMagicIndex - 1 + player.magics.length) % player.magics.length;
     player.comboSlot = null;
+    player.comboSlotIndex = null;
   }
-  if (input.isKeyJustPressed('KeyE') && player.spells.length > 0) {
-    player.activeSpellIndex = (player.activeSpellIndex + 1) % player.spells.length;
+  if (input.isKeyJustPressed('KeyE') && player.magics.length > 0) {
+    player.activeMagicIndex = (player.activeMagicIndex + 1) % player.magics.length;
     player.comboSlot = null;
+    player.comboSlotIndex = null;
   }
 
-  // Number keys for spell selection (only when Shift is NOT held — Shift+Number is for combos)
+  // Number keys for magic selection (only when Shift is NOT held)
   if (!input.isKeyDown('ShiftLeft') && !input.isKeyDown('ShiftRight')) {
-    for (let i = 0; i < 6; i++) {
-      if (input.isKeyJustPressed(`Digit${i + 1}`) && i < player.spells.length) {
-        player.activeSpellIndex = i;
+    for (let i = 0; i < 9; i++) {
+      if (input.isKeyJustPressed(`Digit${i + 1}`) && i < player.magics.length) {
+        player.activeMagicIndex = i;
         player.comboSlot = null;
+        player.comboSlotIndex = null;
       }
     }
   }
 }
 
+export function getActiveSpell(player: Player): SpellDef | undefined {
+  const magic = player.magics[player.activeMagicIndex];
+  if (!magic) return undefined;
+
+  // Check if this is a combo spell (discoveredCombos stores combo spell ids as "magic type")
+  const comboSpell = getSpellById(magic.magicType);
+  if (comboSpell) return comboSpell;
+
+  return getActiveSpellForMagic(magic.magicType, magic.xp, magic.selectedTier);
+}
+
 export function damagePlayer(player: Player, damage: number): void {
   if (player.invincibleTimer > 0) return;
-  const actualDamage = Math.max(1, damage - player.defense);
+  let actualDamage = Math.max(1, damage - player.defense);
+
+  // Shield absorbs damage first
+  if (player.shield > 0) {
+    if (player.shield >= actualDamage) {
+      player.shield -= actualDamage;
+      actualDamage = 0;
+    } else {
+      actualDamage -= player.shield;
+      player.shield = 0;
+      player.shieldTimer = 0;
+    }
+  }
+
   player.hp -= actualDamage;
   player.invincibleTimer = 0.5;
   if (player.hp < 0) player.hp = 0;
@@ -199,6 +236,11 @@ export function damagePlayer(player: Player, damage: number): void {
 
 export function healPlayer(player: Player, amount: number): void {
   player.hp = Math.min(player.maxHp, player.hp + amount);
+}
+
+export function addShield(player: Player, amount: number, duration: number): void {
+  player.shield = Math.max(player.shield, amount);
+  player.shieldTimer = Math.max(player.shieldTimer, duration);
 }
 
 export function addXp(player: Player, amount: number): boolean {
@@ -212,22 +254,21 @@ export function addXp(player: Player, amount: number): boolean {
     player.maxMana += 5;
     player.mana = player.maxMana;
     player.baseDamage += 2;
-    return true; // leveled up
+    return true;
   }
   return false;
 }
 
-export function addSpellXp(player: Player, element: SpellElement, amount: number): boolean {
-  const spell = player.spells.find((s) => s.element === element);
-  if (!spell) return false;
-  spell.xp += amount;
-  if (spell.xp >= spell.xpToNext) {
-    spell.xp -= spell.xpToNext;
-    spell.level++;
-    spell.xpToNext = Math.floor(spell.xpToNext * 1.5);
-    return true;
+export function addMagicXp(player: Player, magicType: MagicType | string, amount: number): { leveled: boolean; newTier?: number } {
+  const magic = player.magics.find((m) => m.magicType === magicType);
+  if (!magic) return { leveled: false };
+  const oldTier = getHighestUnlockedTier(magic.xp);
+  magic.xp += amount;
+  const newTier = getHighestUnlockedTier(magic.xp);
+  if (newTier > oldTier) {
+    return { leveled: true, newTier };
   }
-  return false;
+  return { leveled: false };
 }
 
 export function addItemToInventory(player: Player, itemId: string, count: number = 1): boolean {
@@ -285,12 +326,12 @@ export function getPlayerDamageBonus(player: Player): number {
   return getBuffTotal(player, 'damageBonus');
 }
 
-export function hasSpell(player: Player, element: SpellElement): boolean {
-  return player.spells.some((s) => s.element === element);
+export function hasMagic(player: Player, magicType: MagicType | string): boolean {
+  return player.magics.some((m) => m.magicType === magicType);
 }
 
-export function unlockSpell(player: Player, element: SpellElement): void {
-  if (!hasSpell(player, element)) {
-    player.spells.push({ element, level: 1, xp: 0, xpToNext: 30 });
+export function unlockMagic(player: Player, magicType: MagicType): void {
+  if (!hasMagic(player, magicType)) {
+    player.magics.push({ magicType, xp: 0 });
   }
 }

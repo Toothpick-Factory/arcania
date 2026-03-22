@@ -1,17 +1,22 @@
 import { EnemyDef } from '../data/enemies';
 import { ItemDef, INGREDIENTS, MATERIALS, getIngredientsForFloor } from '../data/items';
-import { SpellElement } from '../data/spells';
+import { MagicType, ALL_MAGIC_TYPES } from '../data/spells';
 import { randomInt, randomFloat, randomChoice } from '../utils/math';
 
 export interface LootDrop {
   gold: number;
   items: { item: ItemDef; count: number }[];
-  spellUnlock?: SpellElement;
+  magicUnlock?: MagicType;
 }
 
-const SPELL_UNLOCK_ORDER: SpellElement[] = ['water', 'ice', 'wind', 'earth', 'lightning'];
+// Order in which magic types are unlocked through gameplay
+const MAGIC_UNLOCK_ORDER: MagicType[] = [
+  'ice', 'earth', 'lightning', 'wind', 'poison',
+  'holy', 'blood', 'crystal', 'thorns', 'necrotic',
+  'lunar', 'minion', 'illusion',
+];
 
-export function generateLoot(enemyDef: EnemyDef, floor: number, unlockedSpells: SpellElement[]): LootDrop {
+export function generateLoot(enemyDef: EnemyDef, floor: number, unlockedMagics: MagicType[]): LootDrop {
   const gold = randomInt(enemyDef.goldDrop[0], enemyDef.goldDrop[1]);
   const items: { item: ItemDef; count: number }[] = [];
 
@@ -31,7 +36,7 @@ export function generateLoot(enemyDef: EnemyDef, floor: number, unlockedSpells: 
     }
   }
 
-  // Boss loot - always drops something good
+  // Boss loot
   if (enemyDef.behavior === 'boss') {
     const available = getIngredientsForFloor(floor);
     items.push({ item: randomChoice(available), count: randomInt(2, 4) });
@@ -42,18 +47,17 @@ export function generateLoot(enemyDef: EnemyDef, floor: number, unlockedSpells: 
     }
   }
 
-  // Chance to unlock a new spell from boss kills
-  let spellUnlock: SpellElement | undefined;
+  // Magic type unlock
+  let magicUnlock: MagicType | undefined;
   if (enemyDef.behavior === 'boss') {
-    const nextSpell = SPELL_UNLOCK_ORDER.find((s) => !unlockedSpells.includes(s));
-    if (nextSpell && randomFloat(0, 1) < 0.8) {
-      spellUnlock = nextSpell;
+    const nextMagic = MAGIC_UNLOCK_ORDER.find((m) => !unlockedMagics.includes(m));
+    if (nextMagic && randomFloat(0, 1) < 0.9) {
+      magicUnlock = nextMagic;
     }
-  } else if (randomFloat(0, 1) < 0.02) {
-    // Very small chance from regular enemies
-    const nextSpell = SPELL_UNLOCK_ORDER.find((s) => !unlockedSpells.includes(s));
-    if (nextSpell) spellUnlock = nextSpell;
+  } else if (randomFloat(0, 1) < 0.015) {
+    const nextMagic = MAGIC_UNLOCK_ORDER.find((m) => !unlockedMagics.includes(m));
+    if (nextMagic) magicUnlock = nextMagic;
   }
 
-  return { gold, items, spellUnlock };
+  return { gold, items, magicUnlock };
 }

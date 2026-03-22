@@ -3,8 +3,9 @@ import { InputManager } from './engine/input';
 import { Renderer } from './engine/renderer';
 import { GameState, TILE_SIZE, CANVAS_WIDTH, CANVAS_HEIGHT } from './engine/types';
 import {
-  Player, createPlayer, updatePlayer, damagePlayer, addXp, addSpellXp,
-  addItemToInventory, unlockSpell, getPlayerDamageBonus, hasSpell
+  Player, createPlayer, updatePlayer, damagePlayer, healPlayer, addShield,
+  addXp, addMagicXp, addItemToInventory, getPlayerDamageBonus,
+  hasMagic, unlockMagic, getActiveSpell,
 } from './entities/player';
 import {
   Enemy, EnemyProjectile, createEnemy, updateEnemy, damageEnemy
@@ -17,12 +18,15 @@ import {
   DungeonMap, generateDungeon, getRoomCenterWorld, worldToTile,
   updateVisibility, findRoomAt
 } from './systems/dungeon';
-import { BASE_SPELLS, COMBO_SPELLS, findComboSpell, SpellDef } from './data/spells';
-import { getEnemiesForFloor, getBossForFloor, scaleEnemyForFloor, EnemyDef } from './data/enemies';
-import { MetaSave, loadMetaProgress, saveMetaProgress, updateMetaFromRun, getDefaultMeta } from './systems/save';
+import {
+  MagicType, SpellDef, COMBO_SPELLS, findComboSpell, getSpellById,
+  getActiveSpellForMagic, MAGIC_TYPE_NAMES, MAGIC_TYPE_COLORS, TIER_NAMES,
+} from './data/spells';
+import { getEnemiesForFloor, getBossForFloor, scaleEnemyForFloor } from './data/enemies';
+import { MetaSave, loadMetaProgress, saveMetaProgress, updateMetaFromRun } from './systems/save';
 import { generateLoot } from './systems/loot';
 import { Shop, generateShop } from './systems/shop';
-import { MenuState, MenuType, createMenuState, updateMenu, renderMenu } from './ui/menus';
+import { MenuState, createMenuState, updateMenu, renderMenu } from './ui/menus';
 import { renderHUD, renderMinimap } from './ui/hud';
 import {
   renderDungeon, renderPlayer, renderEnemies, renderProjectiles,
@@ -62,7 +66,6 @@ export class Game {
       gameTime: 0,
     };
 
-    // Show hub/title
     this.menu.type = 'hub';
 
     this.loop = new GameLoop(
@@ -91,10 +94,10 @@ export class Game {
     this.player.speed += up.speedBonus;
     this.player.manaRegen += up.manaRegenBonus;
 
-    // Unlock previously discovered base spells
-    for (const element of this.meta.unlockedSpells) {
-      if (!hasSpell(this.player, element)) {
-        unlockSpell(this.player, element);
+    // Unlock previously discovered magic types
+    for (const mt of this.meta.unlockedMagics) {
+      if (!hasMagic(this.player, mt)) {
+        unlockMagic(this.player, mt);
       }
     }
 
@@ -103,12 +106,7 @@ export class Game {
       for (const comboId of this.meta.discoveredCombos) {
         if (!this.player.discoveredCombos.includes(comboId)) {
           this.player.discoveredCombos.push(comboId);
-          this.player.spells.push({
-            element: comboId as any,
-            level: 1,
-            xp: 0,
-            xpToNext: 50,
-          });
+          this.player.magics.push({ magicType: comboId as any, xp: 0 });
         }
       }
     }
@@ -125,11 +123,9 @@ export class Game {
     this.aoeEffects = [];
     this.currentShop = null;
 
-    // Place player at spawn
     const spawnPos = getRoomCenterWorld(this.dungeon.spawnRoom);
     this.player.position = { ...spawnPos };
 
-    // Spawn enemies in rooms
     for (const room of this.dungeon.rooms) {
       if (room.type === 'spawn' || room.type === 'shop' || room.type === 'cooking') continue;
 
@@ -155,7 +151,6 @@ export class Game {
       }
     }
 
-    // Generate shop for shop room
     const shopRoom = this.dungeon.rooms.find((r) => r.type === 'shop');
     if (shopRoom) {
       this.currentShop = generateShop(this.state.floor);
@@ -165,66 +160,45 @@ export class Game {
   }
 
   private update(dt: number): void {
-    // Always process menu input (so ESC/I work when no menu is open)
     const action = updateMenu(this.menu, this.input, this.player, this.meta);
-    if (action === 'restart') {
-      this.endRun();
-      return;
-    }
-    if (action === 'start_run') {
-      this.startNewRun();
-      return;
-    }
+    if (action === 'restart') { this.endRun(); return; }
+    if (action === 'start_run') { this.startNewRun(); return; }
 
-    // If a menu is open, don't process gameplay
-    if (this.menu.type !== 'none') {
-      this.input.endFrame();
-      return;
-    }
-
-    if (this.state.scene !== 'dungeon') {
-      this.input.endFrame();
-      return;
-    }
+    if (this.menu.type !== 'none') { this.input.endFrame(); return; }
+    if (this.state.scene !== 'dungeon') { this.input.endFrame(); return; }
 
     this.state.gameTime += dt;
 
-    // Update player
     updatePlayer(this.player, this.input, this.dungeon, dt);
 
-    // Update visibility
     const playerTile = worldToTile(this.player.position.x, this.player.position.y);
     updateVisibility(this.dungeon, playerTile.x, playerTile.y);
 
-    // Handle spell casting
+    // Spell casting
     if (this.input.isMouseJustClicked()) {
       this.handleSpellCast();
     }
 
-    // Handle combo discovery (Shift+number to select two elements)
+    // Combo discovery (Shift+number to select two magic types)
     if (this.input.isKeyDown('ShiftLeft') || this.input.isKeyDown('ShiftRight')) {
-      for (let i = 0; i < Math.min(6, this.player.spells.length); i++) {
+      for (let i = 0; i < Math.min(9, this.player.magics.length); i++) {
         if (this.input.isKeyJustPressed(`Digit${i + 1}`)) {
-          const element = this.player.spells[i].element;
-          if (this.player.comboSlot && this.player.comboSlot !== element) {
-            // Two different elements selected — try to discover/cast combo
-            this.handleComboCast(this.player.comboSlot, element);
+          const mt = this.player.magics[i].magicType;
+          if (this.player.comboSlot && this.player.comboSlot !== mt) {
+            this.handleComboCast(this.player.comboSlot, mt);
             this.player.comboSlot = null;
             this.player.comboSlotIndex = null;
           } else {
-            // First element selected
-            this.player.comboSlot = element;
+            this.player.comboSlot = mt as MagicType;
             this.player.comboSlotIndex = i;
-            this.addNotification(`Combo: ${element} selected — pick a 2nd element`, '#ffff44');
+            const name = MAGIC_TYPE_NAMES[mt as MagicType] || mt;
+            this.addNotification(`Combo: ${name} selected — pick a 2nd magic type`, '#ffff44');
           }
         }
       }
-    } else if (this.player.comboSlot) {
-      // If shift released while combo slot is set, clear it
-      // (only clear on next frame so player can release/re-press)
     }
 
-    // Handle interaction (F key)
+    // Interaction
     if (this.input.isKeyJustPressed('KeyF')) {
       this.handleInteraction();
     }
@@ -232,14 +206,12 @@ export class Game {
     // Update enemies
     for (const enemy of this.enemies) {
       if (!enemy.active) continue;
-      // Only update enemies that are in visible/nearby rooms
       const dist = vec2Dist(enemy.position, this.player.position);
       if (dist > 500) continue;
 
       const proj = updateEnemy(enemy, this.player.position, this.dungeon, dt, this.enemies);
       if (proj) this.enemyProjectiles.push(proj);
 
-      // Melee damage to player
       if (enemy.def.behavior === 'melee' || enemy.def.behavior === 'charger' || enemy.def.behavior === 'boss') {
         if (dist < enemy.def.attackRange + this.player.width / 2 && enemy.attackTimer <= 0) {
           damagePlayer(this.player, enemy.def.damage);
@@ -254,7 +226,6 @@ export class Game {
       const proj = this.projectiles[i];
       const expired = updateProjectile(proj, dt);
 
-      // Check collision with enemies
       let hit = false;
       for (const enemy of this.enemies) {
         if (!enemy.active || proj.hitEnemies.has(enemy.id)) continue;
@@ -264,23 +235,31 @@ export class Game {
           const killed = damageEnemy(enemy, proj.damage, knockDir);
           proj.hitEnemies.add(enemy.id);
 
-          if (killed) {
-            this.handleEnemyKill(enemy);
+          if (killed) this.handleEnemyKill(enemy);
+
+          // Magic XP on hit
+          const magic = this.player.magics[this.player.activeMagicIndex];
+          if (magic) {
+            const result = addMagicXp(this.player, magic.magicType, 3);
+            if (result.leveled && result.newTier) {
+              const spellDef = getActiveSpellForMagic(magic.magicType as MagicType, magic.xp);
+              const name = spellDef?.name || `Tier ${result.newTier}`;
+              this.addNotification(`${MAGIC_TYPE_NAMES[magic.magicType as MagicType] || magic.magicType} upgraded: ${name}!`, MAGIC_TYPE_COLORS[magic.magicType as MagicType] || '#ffffff');
+            }
           }
 
-          // Spell XP
-          const spell = this.player.spells[this.player.activeSpellIndex];
-          if (spell) addSpellXp(this.player, spell.element, 3);
+          // Lifesteal
+          const spellDef = getSpellById(proj.spellId);
+          if (spellDef?.lifesteal) {
+            healPlayer(this.player, Math.round(proj.damage * spellDef.lifesteal));
+          }
 
           if (!proj.piercing) {
             hit = true;
-            // Spawn AoE if applicable
             if (proj.aoeRadius > 0) {
-              const spellDef = this.getSpellDef(proj.spellId);
-              if (spellDef) {
-                this.aoeEffects.push(
-                  createAoeEffect(spellDef, proj.position, getPlayerDamageBonus(this.player), 1)
-                );
+              const sd = getSpellById(proj.spellId);
+              if (sd) {
+                this.aoeEffects.push(createAoeEffect(sd, proj.position, getPlayerDamageBonus(this.player), 1));
               }
             }
             break;
@@ -288,16 +267,13 @@ export class Game {
         }
       }
 
-      // Check wall collision
       const tile = worldToTile(proj.position.x, proj.position.y);
       if (tile.x < 0 || tile.y < 0 || tile.x >= this.dungeon.width || tile.y >= this.dungeon.height ||
           !this.dungeon.tiles[tile.y]?.[tile.x]?.walkable) {
         hit = true;
       }
 
-      if (expired || hit) {
-        this.projectiles.splice(i, 1);
-      }
+      if (expired || hit) this.projectiles.splice(i, 1);
     }
 
     // Update enemy projectiles
@@ -307,7 +283,6 @@ export class Game {
       proj.position.y += proj.velocity.y * dt;
       proj.lifetime -= dt;
 
-      // Hit player
       const dist = vec2Dist(proj.position, this.player.position);
       if (dist < proj.radius + this.player.width / 2) {
         damagePlayer(this.player, proj.damage);
@@ -315,7 +290,6 @@ export class Game {
         continue;
       }
 
-      // Wall collision or expired
       const tile = worldToTile(proj.position.x, proj.position.y);
       if (proj.lifetime <= 0 || !this.dungeon.tiles[tile.y]?.[tile.x]?.walkable) {
         this.enemyProjectiles.splice(i, 1);
@@ -327,7 +301,6 @@ export class Game {
       const aoe = this.aoeEffects[i];
       const expired = updateAoeEffect(aoe, dt);
 
-      // Damage enemies in radius
       for (const enemy of this.enemies) {
         if (!enemy.active || aoe.hitEnemies.has(enemy.id)) continue;
         const dist = vec2Dist(aoe.position, enemy.position);
@@ -348,15 +321,12 @@ export class Game {
       saveMetaProgress(this.meta);
     }
 
-    // Camera follow
     this.renderer.followTarget(this.player.position, 0.08);
 
     // Update notifications
     for (let i = this.notifications.length - 1; i >= 0; i--) {
       this.notifications[i].timer -= dt;
-      if (this.notifications[i].timer <= 0) {
-        this.notifications.splice(i, 1);
-      }
+      if (this.notifications[i].timer <= 0) this.notifications.splice(i, 1);
     }
 
     // Auto-save
@@ -370,103 +340,99 @@ export class Game {
   }
 
   private handleSpellCast(): void {
-    if (this.player.spells.length === 0) return;
-    const spell = this.player.spells[this.player.activeSpellIndex];
-    if (!spell) return;
+    const magic = this.player.magics[this.player.activeMagicIndex];
+    if (!magic) return;
 
-    // Look up spell definition — could be a base spell or a discovered combo spell
-    const spellDef: SpellDef | undefined =
-      BASE_SPELLS.find((s) => s.id === spell.element) ||
-      COMBO_SPELLS.find((s) => s.id === spell.element);
+    // Resolve spell: base magic tier spell or combo spell
+    const spellDef = getActiveSpell(this.player);
     if (!spellDef) return;
 
-    if (this.player.spellCooldowns.has(spell.element)) return;
+    if (this.player.spellCooldowns.has(spellDef.id)) return;
     if (this.player.mana < spellDef.manaCost) return;
 
-    // Get direction to mouse
     const mouseWorld = this.renderer.screenToWorld(this.input.getMousePos());
     const dir = vec2Normalize(vec2Sub(mouseWorld, this.player.position));
     if (vec2Len(dir) === 0) return;
 
     this.player.mana -= spellDef.manaCost;
-    this.player.spellCooldowns.set(spell.element, spellDef.cooldown);
+    this.player.spellCooldowns.set(spellDef.id, spellDef.cooldown);
 
+    // Apply self-effects (shields, heals)
+    if (spellDef.shieldAmount) {
+      addShield(this.player, spellDef.shieldAmount, spellDef.shieldDuration || 5);
+    }
+    if (spellDef.healAmount) {
+      healPlayer(this.player, spellDef.healAmount);
+    }
+
+    // Cast based on behavior
     if (spellDef.projectileSpeed > 0) {
       this.projectiles.push(
-        createProjectile(spellDef, this.player.position, dir, this.player.baseDamage + getPlayerDamageBonus(this.player), spell.level)
+        createProjectile(spellDef, this.player.position, dir, this.player.baseDamage + getPlayerDamageBonus(this.player), 1)
       );
     } else if (spellDef.aoeRadius > 0) {
+      const pos = spellDef.range > 0 ? mouseWorld : this.player.position;
       this.aoeEffects.push(
-        createAoeEffect(spellDef, this.player.position, this.player.baseDamage + getPlayerDamageBonus(this.player), spell.level)
+        createAoeEffect(spellDef, pos, this.player.baseDamage + getPlayerDamageBonus(this.player), 1)
       );
     }
 
-    // Give spell XP on cast
-    addSpellXp(this.player, spell.element as any, 1);
+    // Magic XP on cast
+    addMagicXp(this.player, magic.magicType, 1);
   }
 
   private handleComboCast(el1: string, el2: string): void {
-    const comboDef = findComboSpell(el1 as any, el2 as any);
+    const comboDef = findComboSpell(el1 as MagicType, el2 as MagicType);
     if (!comboDef) {
-      this.addNotification('Those elements cannot be combined', '#ff4444');
+      this.addNotification('Those magic types cannot be combined', '#ff4444');
       return;
     }
 
-    // Check if already discovered
     const alreadyDiscovered = this.player.discoveredCombos.includes(comboDef.id);
 
     if (!alreadyDiscovered) {
-      // Discover the combo spell — add it permanently to the spell bar
       this.player.discoveredCombos.push(comboDef.id);
-      this.player.spells.push({
-        element: comboDef.id as any, // combo spells use their id as element key
-        level: 1,
-        xp: 0,
-        xpToNext: 50,
-      });
+      this.player.magics.push({ magicType: comboDef.id as any, xp: 0 });
 
-      // Track in meta so it persists across runs
-      if (!this.meta.discoveredCombos) {
-        this.meta.discoveredCombos = [];
-      }
+      if (!this.meta.discoveredCombos) this.meta.discoveredCombos = [];
       if (!this.meta.discoveredCombos.includes(comboDef.id)) {
         this.meta.discoveredCombos.push(comboDef.id);
       }
 
       this.addNotification(`NEW SPELL DISCOVERED: ${comboDef.name}!`, '#ffff00');
       this.addNotification(`${comboDef.description}`, comboDef.color);
-      this.addNotification(`Added to spell bar as slot ${this.player.spells.length}`, '#aaaaaa');
 
-      // Give XP to both source element spells
-      addSpellXp(this.player, el1 as any, 10);
-      addSpellXp(this.player, el2 as any, 10);
+      addMagicXp(this.player, el1, 15);
+      addMagicXp(this.player, el2, 15);
 
-      // Also fire off the combo spell immediately as a reward
-      this.castComboSpell(comboDef);
+      // Free cast on discovery
+      this.castSpellDirect(comboDef);
     } else {
       this.addNotification(`${comboDef.name} already discovered!`, '#888888');
     }
   }
 
-  private castComboSpell(comboDef: SpellDef): void {
-    if (this.player.mana < comboDef.manaCost) {
-      return; // silently skip if not enough mana for the freebie cast
-    }
+  private castSpellDirect(spellDef: SpellDef): void {
+    if (this.player.mana < spellDef.manaCost) return;
 
     const mouseWorld = this.renderer.screenToWorld(this.input.getMousePos());
     const dir = vec2Normalize(vec2Sub(mouseWorld, this.player.position));
 
-    this.player.mana -= comboDef.manaCost;
-    this.player.spellCooldowns.set(comboDef.id, comboDef.cooldown);
+    this.player.mana -= spellDef.manaCost;
+    this.player.spellCooldowns.set(spellDef.id, spellDef.cooldown);
 
-    if (comboDef.projectileSpeed > 0) {
+    if (spellDef.shieldAmount) addShield(this.player, spellDef.shieldAmount, spellDef.shieldDuration || 5);
+    if (spellDef.healAmount) healPlayer(this.player, spellDef.healAmount);
+
+    if (spellDef.projectileSpeed > 0) {
       this.projectiles.push(
-        createProjectile(comboDef, this.player.position, dir, this.player.baseDamage + getPlayerDamageBonus(this.player), 1)
+        createProjectile(spellDef, this.player.position, dir, this.player.baseDamage + getPlayerDamageBonus(this.player), 1)
       );
     }
-    if (comboDef.aoeRadius > 0 && comboDef.projectileSpeed === 0) {
+    if (spellDef.aoeRadius > 0 && spellDef.projectileSpeed === 0) {
+      const pos = spellDef.range > 0 ? mouseWorld : this.player.position;
       this.aoeEffects.push(
-        createAoeEffect(comboDef, comboDef.range > 0 ? mouseWorld : this.player.position, this.player.baseDamage + getPlayerDamageBonus(this.player), 1)
+        createAoeEffect(spellDef, pos, this.player.baseDamage + getPlayerDamageBonus(this.player), 1)
       );
     }
   }
@@ -477,21 +443,14 @@ export class Game {
     if (!tile) return;
 
     if (tile.type === 'stairs') {
-      // Check if boss is defeated
       const bossAlive = this.enemies.some((e) => e.active && e.def.behavior === 'boss');
-      if (bossAlive) {
-        this.addNotification('Defeat the boss first!', '#ff4444');
-        return;
-      }
-
-      // Check for final boss victory
+      if (bossAlive) { this.addNotification('Defeat the boss first!', '#ff4444'); return; }
       if (this.state.floor >= 8) {
         this.menu.type = 'victory';
         updateMetaFromRun(this.meta, this.player, this.state.floor);
         saveMetaProgress(this.meta);
         return;
       }
-
       this.state.floor++;
       this.generateFloor();
       return;
@@ -512,32 +471,28 @@ export class Game {
   }
 
   private handleEnemyKill(enemy: Enemy): void {
-    const loot = generateLoot(enemy.def, this.state.floor, this.meta.unlockedSpells);
+    const loot = generateLoot(enemy.def, this.state.floor, this.meta.unlockedMagics);
 
     this.player.gold += loot.gold;
-    if (loot.gold > 0) {
-      this.addNotification(`+${loot.gold} gold`, '#ffdd44');
-    }
+    if (loot.gold > 0) this.addNotification(`+${loot.gold} gold`, '#ffdd44');
 
     for (const { item, count } of loot.items) {
       addItemToInventory(this.player, item.id, count);
       this.addNotification(`+${count} ${item.name}`, item.color);
     }
 
-    if (loot.spellUnlock) {
-      unlockSpell(this.player, loot.spellUnlock);
-      if (!this.meta.unlockedSpells.includes(loot.spellUnlock)) {
-        this.meta.unlockedSpells.push(loot.spellUnlock);
+    if (loot.magicUnlock) {
+      unlockMagic(this.player, loot.magicUnlock);
+      if (!this.meta.unlockedMagics.includes(loot.magicUnlock)) {
+        this.meta.unlockedMagics.push(loot.magicUnlock);
       }
-      this.addNotification(`New spell: ${loot.spellUnlock}!`, '#cc88ff');
+      const name = MAGIC_TYPE_NAMES[loot.magicUnlock];
+      this.addNotification(`New magic unlocked: ${name}!`, MAGIC_TYPE_COLORS[loot.magicUnlock]);
     }
 
     const leveled = addXp(this.player, enemy.def.xpReward);
-    if (leveled) {
-      this.addNotification(`Level up! Lv.${this.player.level}`, '#ffff44');
-    }
+    if (leveled) this.addNotification(`Level up! Lv.${this.player.level}`, '#ffff44');
 
-    // Mark room as cleared
     const enemyTile = worldToTile(enemy.position.x, enemy.position.y);
     const room = findRoomAt(this.dungeon, enemyTile.x, enemyTile.y);
     if (room) {
@@ -545,31 +500,20 @@ export class Game {
         const et = worldToTile(e.position.x, e.position.y);
         return findRoomAt(this.dungeon, et.x, et.y) === room;
       });
-      if (roomEnemies.every((e) => !e.active)) {
-        room.cleared = true;
-      }
+      if (roomEnemies.every((e) => !e.active)) room.cleared = true;
     }
   }
 
   private endRun(): void {
     updateMetaFromRun(this.meta, this.player, this.state.floor);
-
-    // Small permanent upgrade per run
     const up = this.meta.permanentUpgrades;
     up.maxHpBonus += 2;
     up.maxManaBonus += 1;
     up.damageBonus += 1;
-
     saveMetaProgress(this.meta);
-
     this.state.scene = 'title';
     this.menu.type = 'hub';
     this.menu.selectedIndex = 0;
-  }
-
-  private getSpellDef(spellId: string): SpellDef | undefined {
-    return BASE_SPELLS.find((s) => s.id === spellId) ||
-      (findComboSpell as any)(spellId); // fallback
   }
 
   private addNotification(text: string, color: string): void {
@@ -582,40 +526,21 @@ export class Game {
 
     if (this.state.scene === 'dungeon' || this.menu.type === 'death' || this.menu.type === 'victory') {
       this.renderer.beginCamera();
-
-      // Render dungeon
       renderDungeon(this.renderer, this.dungeon);
-
-      // Render AoE effects (below entities)
       renderAoeEffects(this.renderer, this.aoeEffects);
-
-      // Render enemies
       renderEnemies(this.renderer, this.enemies);
-
-      // Render player
       renderPlayer(this.renderer, this.player);
-
-      // Render projectiles
       renderProjectiles(this.renderer, this.projectiles);
       renderEnemyProjectiles(this.renderer, this.enemyProjectiles);
-
-      // Render interaction prompts
       this.renderInteractionPrompts();
-
       this.renderer.endCamera();
 
-      // HUD (screen space)
       renderHUD(this.renderer, this.player, this.state);
-
-      // Minimap
       const pt = worldToTile(this.player.position.x, this.player.position.y);
       renderMinimap(this.renderer, this.dungeon, pt.x, pt.y);
-
-      // Notifications
       this.renderNotifications();
     }
 
-    // Menus (always on top)
     renderMenu(this.renderer, this.menu, this.player, this.meta);
   }
 
@@ -626,30 +551,17 @@ export class Game {
 
     if (tile.type === 'stairs') {
       const bossAlive = this.enemies.some((e) => e.active && e.def.behavior === 'boss');
-      if (bossAlive) {
-        renderInteractionPrompt(this.renderer, 'Defeat the boss!', this.player.position.x, this.player.position.y);
-      } else {
-        renderInteractionPrompt(this.renderer, 'Descend', this.player.position.x, this.player.position.y);
-      }
+      renderInteractionPrompt(this.renderer, bossAlive ? 'Defeat the boss!' : 'Descend', this.player.position.x, this.player.position.y);
     }
-    if (tile.type === 'shop') {
-      renderInteractionPrompt(this.renderer, 'Shop', this.player.position.x, this.player.position.y);
-    }
-    if (tile.type === 'cooking_station') {
-      renderInteractionPrompt(this.renderer, 'Cook', this.player.position.x, this.player.position.y);
-    }
+    if (tile.type === 'shop') renderInteractionPrompt(this.renderer, 'Shop', this.player.position.x, this.player.position.y);
+    if (tile.type === 'cooking_station') renderInteractionPrompt(this.renderer, 'Cook', this.player.position.x, this.player.position.y);
   }
 
   private renderNotifications(): void {
     for (let i = 0; i < this.notifications.length; i++) {
       const n = this.notifications[i];
-      const alpha = Math.min(1, n.timer);
-      this.renderer.ctx.globalAlpha = alpha;
-      this.renderer.drawText(
-        n.text,
-        CANVAS_WIDTH / 2, 100 + i * 22,
-        n.color, 14, 'center'
-      );
+      this.renderer.ctx.globalAlpha = Math.min(1, n.timer);
+      this.renderer.drawText(n.text, CANVAS_WIDTH / 2, 100 + i * 22, n.color, 14, 'center');
     }
     this.renderer.ctx.globalAlpha = 1;
   }

@@ -1,5 +1,5 @@
 import { Player } from '../entities/player';
-import { SpellElement } from '../data/spells';
+import { MagicType } from '../data/spells';
 
 const SAVE_KEY = 'arcania_save';
 
@@ -7,7 +7,7 @@ export interface MetaSave {
   totalRuns: number;
   bestFloor: number;
   totalGoldEarned: number;
-  unlockedSpells: SpellElement[];
+  unlockedMagics: MagicType[];
   discoveredCombos: string[];
   discoveredRecipes: string[];
   permanentUpgrades: PermanentUpgrades;
@@ -27,7 +27,7 @@ export function getDefaultMeta(): MetaSave {
     totalRuns: 0,
     bestFloor: 0,
     totalGoldEarned: 0,
-    unlockedSpells: ['fire', 'water'],
+    unlockedMagics: ['fire', 'arcane'],
     discoveredCombos: [],
     discoveredRecipes: [],
     permanentUpgrades: {
@@ -67,10 +67,9 @@ export function updateMetaFromRun(meta: MetaSave, player: Player, floor: number)
   meta.bestFloor = Math.max(meta.bestFloor, floor);
   meta.totalGoldEarned += player.gold;
 
-  // Unlock any new spells the player discovered
-  for (const spell of player.spells) {
-    if (!meta.unlockedSpells.includes(spell.element)) {
-      meta.unlockedSpells.push(spell.element);
+  for (const magic of player.magics) {
+    if (!meta.unlockedMagics.includes(magic.magicType as MagicType)) {
+      meta.unlockedMagics.push(magic.magicType as MagicType);
     }
   }
 }

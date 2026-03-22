@@ -1,14 +1,14 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { getDefaultMeta, updateMetaFromRun } from './save';
-import { createPlayer, unlockSpell } from '../entities/player';
+import { createPlayer, unlockMagic } from '../entities/player';
 
 describe('Save system', () => {
   it('creates default meta with expected values', () => {
     const meta = getDefaultMeta();
     expect(meta.totalRuns).toBe(0);
     expect(meta.bestFloor).toBe(0);
-    expect(meta.unlockedSpells).toContain('fire');
-    expect(meta.unlockedSpells).toContain('water');
+    expect(meta.unlockedMagics).toContain('fire');
+    expect(meta.unlockedMagics).toContain('arcane');
     expect(meta.discoveredCombos).toHaveLength(0);
     expect(meta.discoveredRecipes).toHaveLength(0);
   });
@@ -17,13 +17,13 @@ describe('Save system', () => {
     const meta = getDefaultMeta();
     const player = createPlayer();
     player.gold = 50;
-    unlockSpell(player, 'ice');
+    unlockMagic(player, 'ice');
 
     updateMetaFromRun(meta, player, 3);
     expect(meta.totalRuns).toBe(1);
     expect(meta.bestFloor).toBe(3);
     expect(meta.totalGoldEarned).toBe(50);
-    expect(meta.unlockedSpells).toContain('ice');
+    expect(meta.unlockedMagics).toContain('ice');
   });
 
   it('bestFloor only increases', () => {
@@ -34,6 +34,6 @@ describe('Save system', () => {
     expect(meta.bestFloor).toBe(5);
 
     updateMetaFromRun(meta, player, 3);
-    expect(meta.bestFloor).toBe(5); // should not decrease
+    expect(meta.bestFloor).toBe(5);
   });
 });
