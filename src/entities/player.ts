@@ -1,7 +1,7 @@
 import { Vec2, TILE_SIZE } from '../engine/types';
 import { InputManager } from '../engine/input';
 import { DungeonMap, isTileWalkable, worldToTile } from '../systems/dungeon';
-import { FoodEffect } from '../data/items';
+import { FoodEffect, HotbarSlot, QueueEntry, HOTBAR_SIZE } from '../data/items';
 import {
   MagicType, SpellTier, STARTING_MAGIC_TYPES,
   getHighestUnlockedTier, getActiveSpellForMagic, getSpellById, SpellDef,
@@ -42,12 +42,14 @@ export interface Player {
   xp: number;
   xpToNext: number;
   gold: number;
-  // Magic
+  // Magic & Hotbar
   magics: PlayerMagic[];
-  activeMagicIndex: number;  // last selected base magic (for solo cast)
-  comboQueue: MagicType[];   // queued magic types for combo casting
+  hotbar: HotbarSlot[];       // 5 slots holding spells or items
+  activeHotbarIndex: number;  // last pressed hotbar slot
+  comboQueue: QueueEntry[];   // queued entries for combo casting (max 3)
   spellCooldowns: Map<string, number>;
   discoveredCombos: string[];
+  discoveredComboRecipes: string[];
   // Inventory
   inventory: InventoryItem[];
   // Buffs
@@ -78,10 +80,18 @@ export function createPlayer(): Player {
     xpToNext: 50,
     gold: 0,
     magics: STARTING_MAGIC_TYPES.map((mt) => ({ magicType: mt, xp: 0 })),
-    activeMagicIndex: 0,
+    hotbar: [
+      { kind: 'spell', ref: 'fire' },
+      { kind: 'spell', ref: 'arcane' },
+      { kind: 'empty' },
+      { kind: 'empty' },
+      { kind: 'empty' },
+    ],
+    activeHotbarIndex: 0,
     comboQueue: [],
     spellCooldowns: new Map(),
     discoveredCombos: [],
+    discoveredComboRecipes: [],
     inventory: [],
     activeBuffs: [],
     totalRuns: 0,
@@ -166,16 +176,16 @@ export function updatePlayer(player: Player, input: InputManager, dungeon: Dunge
     player.invincibleTimer -= dt;
   }
 
-  // Number keys queue magic types for combo casting
-  for (let i = 0; i < 9; i++) {
-    if (input.isKeyJustPressed(`Digit${i + 1}`) && i < player.magics.length) {
-      const mt = player.magics[i].magicType;
-      // Add to combo queue (max 2 elements for now)
-      if (player.comboQueue.length < 2) {
-        player.comboQueue.push(mt);
+  // Number keys 1-5 queue hotbar slot contents into combo queue
+  for (let i = 0; i < HOTBAR_SIZE; i++) {
+    if (input.isKeyJustPressed(`Digit${i + 1}`)) {
+      const slot = player.hotbar[i];
+      if (slot.kind !== 'empty' && slot.ref) {
+        if (player.comboQueue.length < 3) {
+          player.comboQueue.push({ kind: slot.kind as 'spell' | 'item', ref: slot.ref });
+        }
       }
-      // Always update the active magic index to the last pressed
-      player.activeMagicIndex = i;
+      player.activeHotbarIndex = i;
     }
   }
 
@@ -186,14 +196,18 @@ export function updatePlayer(player: Player, input: InputManager, dungeon: Dunge
 }
 
 export function getActiveSpell(player: Player): SpellDef | undefined {
-  const magic = player.magics[player.activeMagicIndex];
-  if (!magic) return undefined;
+  const slot = player.hotbar[player.activeHotbarIndex];
+  if (!slot || slot.kind !== 'spell' || !slot.ref) return undefined;
 
-  // Check if this is a combo spell (discoveredCombos stores combo spell ids as "magic type")
-  const comboSpell = getSpellById(magic.magicType);
+  // Check if it's a combo spell
+  const comboSpell = getSpellById(slot.ref);
   if (comboSpell) return comboSpell;
 
-  return getActiveSpellForMagic(magic.magicType, magic.xp, magic.selectedTier);
+  // Base magic type — find XP from magics array
+  const magic = player.magics.find((m) => m.magicType === slot.ref);
+  if (!magic) return undefined;
+
+  return getActiveSpellForMagic(magic.magicType as MagicType, magic.xp, magic.selectedTier);
 }
 
 export function damagePlayer(player: Player, damage: number): void {

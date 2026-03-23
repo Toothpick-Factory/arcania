@@ -4,8 +4,8 @@ import { Renderer } from './engine/renderer';
 import { GameState, TILE_SIZE, CANVAS_WIDTH, CANVAS_HEIGHT } from './engine/types';
 import {
   Player, createPlayer, updatePlayer, damagePlayer, healPlayer, addShield,
-  addXp, addMagicXp, addItemToInventory, getPlayerDamageBonus,
-  hasMagic, unlockMagic, getActiveSpell,
+  addXp, addMagicXp, addItemToInventory, removeItemFromInventory, getItemCount,
+  getPlayerDamageBonus, hasMagic, unlockMagic, getActiveSpell, applyFoodEffect,
 } from './entities/player';
 import {
   Enemy, EnemyProjectile, createEnemy, updateEnemy, damageEnemy
@@ -20,8 +20,9 @@ import {
 } from './systems/dungeon';
 import {
   MagicType, SpellDef, COMBO_SPELLS, findComboSpell, getSpellById,
-  getActiveSpellForMagic, MAGIC_TYPE_NAMES, MAGIC_TYPE_COLORS, TIER_NAMES,
+  getActiveSpellForMagic, MAGIC_TYPE_NAMES, MAGIC_TYPE_COLORS,
 } from './data/spells';
+import { findComboRecipe, getItemDef, getFoodEffect, QueueEntry } from './data/items';
 import { getEnemiesForFloor, getBossForFloor, scaleEnemyForFloor } from './data/enemies';
 import { MetaSave, loadMetaProgress, saveMetaProgress, updateMetaFromRun } from './systems/save';
 import { generateLoot } from './systems/loot';
@@ -98,14 +99,14 @@ export class Game {
       }
     }
 
-    // Restore previously discovered combo spells
+    // Restore discovered combos
     if (this.meta.discoveredCombos) {
-      for (const comboId of this.meta.discoveredCombos) {
-        if (!this.player.discoveredCombos.includes(comboId)) {
-          this.player.discoveredCombos.push(comboId);
-          this.player.magics.push({ magicType: comboId as any, xp: 0 });
-        }
-      }
+      this.player.discoveredCombos = [...this.meta.discoveredCombos];
+    }
+
+    // Restore hotbar from meta if available
+    if (this.meta.hotbarConfig) {
+      this.player.hotbar = [...this.meta.hotbarConfig];
     }
 
     this.generateFloor();
@@ -216,7 +217,8 @@ export class Game {
           if (killed) this.handleEnemyKill(enemy);
 
           // Magic XP on hit
-          const magic = this.player.magics[this.player.activeMagicIndex];
+          const activeSlot = this.player.hotbar[this.player.activeHotbarIndex];
+          const magic = activeSlot?.kind === 'spell' ? this.player.magics.find((m) => m.magicType === activeSlot.ref) : undefined;
           if (magic) {
             const result = addMagicXp(this.player, magic.magicType, 3);
             if (result.leveled && result.newTier) {
@@ -321,54 +323,128 @@ export class Game {
     const queue = this.player.comboQueue;
 
     if (queue.length >= 2) {
-      // Combo attempt — check if it's a valid combo
-      const comboDef = findComboSpell(queue[0], queue[1]);
-      if (comboDef) {
-        // Valid combo — cast it!
-        if (!this.player.spellCooldowns.has(comboDef.id)) {
+      // Multi-element combo attempt
+      // 1. Check spell+spell combo (only if both are spells)
+      const allSpells = queue.every((e) => e.kind === 'spell');
+      if (allSpells && queue.length === 2) {
+        const comboDef = findComboSpell(queue[0].ref as MagicType, queue[1].ref as MagicType);
+        if (comboDef && !this.player.spellCooldowns.has(comboDef.id)) {
           this.fireSpell(comboDef);
-
-          // Discover if new
           if (!this.player.discoveredCombos.includes(comboDef.id)) {
             this.player.discoveredCombos.push(comboDef.id);
             if (!this.meta.discoveredCombos) this.meta.discoveredCombos = [];
             if (!this.meta.discoveredCombos.includes(comboDef.id)) {
               this.meta.discoveredCombos.push(comboDef.id);
             }
-            this.addNotification(`COMBO DISCOVERED: ${comboDef.name}!`, '#ffff00');
+            this.addNotification(`SPELL COMBO: ${comboDef.name}!`, '#ffff00');
             this.addNotification(`${comboDef.description}`, comboDef.color);
           }
+          addMagicXp(this.player, queue[0].ref, 5);
+          addMagicXp(this.player, queue[1].ref, 5);
+          this.player.comboQueue = [];
+          return;
+        }
+      }
 
-          // XP to both source magic types
-          addMagicXp(this.player, queue[0], 5);
-          addMagicXp(this.player, queue[1], 5);
-        }
-      } else {
-        // Invalid combo — fizzle
-        this.addNotification('Spell fizzled!', '#ff4444');
+      // 2. Check mixed combo recipes (spell+item, item+item+spell, etc.)
+      const comboRecipe = findComboRecipe(queue);
+      if (comboRecipe) {
+        this.handleComboRecipe(comboRecipe);
+        this.player.comboQueue = [];
+        return;
       }
-      // Clear the queue after any combo attempt
+
+      // 3. No match — fizzle
+      this.addNotification('Combo fizzled!', '#ff4444');
       this.player.comboQueue = [];
+
     } else if (queue.length === 1) {
-      // Single element queued — cast that base spell and clear queue
-      const magic = this.player.magics.find((m) => m.magicType === queue[0]);
-      if (magic) {
-        const spellDef = getActiveSpellForMagic(queue[0], magic.xp);
-        if (spellDef && !this.player.spellCooldowns.has(spellDef.id)) {
-          this.fireSpell(spellDef);
-          addMagicXp(this.player, queue[0], 1);
+      const entry = queue[0];
+      if (entry.kind === 'spell') {
+        // Cast base spell
+        const magic = this.player.magics.find((m) => m.magicType === entry.ref);
+        if (magic) {
+          const spellDef = getActiveSpellForMagic(entry.ref as MagicType, magic.xp);
+          if (spellDef && !this.player.spellCooldowns.has(spellDef.id)) {
+            this.fireSpell(spellDef);
+            addMagicXp(this.player, entry.ref, 1);
+          }
         }
+      } else if (entry.kind === 'item') {
+        // Consume item directly
+        this.consumeItem(entry.ref);
       }
       this.player.comboQueue = [];
+
     } else {
-      // No queue — cast the active (last selected) base magic
-      const magic = this.player.magics[this.player.activeMagicIndex];
-      if (!magic) return;
-      const spellDef = getActiveSpellForMagic(magic.magicType as MagicType, magic.xp);
-      if (!spellDef) return;
-      if (this.player.spellCooldowns.has(spellDef.id)) return;
-      this.fireSpell(spellDef);
-      addMagicXp(this.player, magic.magicType, 1);
+      // No queue — cast from active hotbar slot
+      const slot = this.player.hotbar[this.player.activeHotbarIndex];
+      if (!slot || slot.kind === 'empty' || !slot.ref) return;
+
+      if (slot.kind === 'spell') {
+        const magic = this.player.magics.find((m) => m.magicType === slot.ref);
+        if (!magic) return;
+        const spellDef = getActiveSpellForMagic(magic.magicType as MagicType, magic.xp);
+        if (!spellDef || this.player.spellCooldowns.has(spellDef.id)) return;
+        this.fireSpell(spellDef);
+        addMagicXp(this.player, magic.magicType, 1);
+      } else if (slot.kind === 'item') {
+        this.consumeItem(slot.ref);
+      }
+    }
+  }
+
+  private handleComboRecipe(recipe: import('./data/items').ComboRecipeDef): void {
+    // Consume items from inventory (spells are not consumed)
+    const itemEntries = recipe.elements.filter((e) => e.kind === 'item');
+    // Check player has all items
+    const itemCounts = new Map<string, number>();
+    for (const e of itemEntries) {
+      itemCounts.set(e.ref, (itemCounts.get(e.ref) || 0) + 1);
+    }
+    for (const [itemId, needed] of itemCounts) {
+      if (getItemCount(this.player, itemId) < needed) {
+        this.addNotification(`Missing ${getItemDef(itemId)?.name || itemId}!`, '#ff4444');
+        return;
+      }
+    }
+
+    // Consume
+    for (const [itemId, needed] of itemCounts) {
+      removeItemFromInventory(this.player, itemId, needed);
+    }
+
+    // Produce result
+    addItemToInventory(this.player, recipe.result, recipe.resultCount);
+
+    // Discover recipe
+    if (!this.player.discoveredComboRecipes.includes(recipe.id)) {
+      this.player.discoveredComboRecipes.push(recipe.id);
+      this.addNotification(`RECIPE DISCOVERED: ${recipe.name}!`, '#ffff00');
+    } else {
+      this.addNotification(`Crafted: ${recipe.name}!`, '#44ff44');
+    }
+
+    // XP to any spell magic types used
+    for (const e of recipe.elements) {
+      if (e.kind === 'spell') {
+        addMagicXp(this.player, e.ref, 3);
+      }
+    }
+  }
+
+  private consumeItem(itemId: string): void {
+    if (getItemCount(this.player, itemId) <= 0) {
+      this.addNotification('No items left!', '#ff4444');
+      return;
+    }
+    const effect = getFoodEffect(itemId);
+    if (effect) {
+      removeItemFromInventory(this.player, itemId, 1);
+      applyFoodEffect(this.player, itemId, effect);
+      this.addNotification(`Consumed ${getItemDef(itemId)?.name || itemId}`, '#44ff44');
+    } else {
+      this.addNotification('Cannot use that item directly', '#888888');
     }
   }
 
@@ -423,8 +499,7 @@ export class Game {
     }
 
     if (tile.type === 'cooking_station') {
-      this.menu.type = 'cooking';
-      this.menu.selectedIndex = 0;
+      this.addNotification('Use hotbar combos to cook! (e.g. Fire + Meat)', '#ff8844');
       return;
     }
   }
@@ -447,6 +522,12 @@ export class Game {
       }
       const name = MAGIC_TYPE_NAMES[loot.magicUnlock];
       this.addNotification(`New magic unlocked: ${name}!`, MAGIC_TYPE_COLORS[loot.magicUnlock]);
+      // Auto-assign to first empty hotbar slot
+      const emptySlot = this.player.hotbar.findIndex((s) => s.kind === 'empty');
+      if (emptySlot >= 0) {
+        this.player.hotbar[emptySlot] = { kind: 'spell', ref: loot.magicUnlock };
+        this.addNotification(`Assigned to hotbar slot ${emptySlot + 1}`, '#aaaaaa');
+      }
     }
 
     const leveled = addXp(this.player, enemy.def.xpReward);
@@ -468,6 +549,8 @@ export class Game {
     const up = this.meta.permanentUpgrades;
     up.maxHpBonus += 2;
     up.damageBonus += 1;
+    // Save hotbar config for next run
+    this.meta.hotbarConfig = [...this.player.hotbar];
     saveMetaProgress(this.meta);
     this.state.scene = 'title';
     this.menu.type = 'hub';

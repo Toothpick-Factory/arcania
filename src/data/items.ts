@@ -74,11 +74,81 @@ export const COOKING_RECIPES: RecipeDef[] = [
   { id: 'r_dragon_feast', name: 'Dragon Feast', ingredients: ['meat_raw', 'dragon_pepper', 'starlight_salt', 'ember_root'], result: 'dragon_feast', resultCount: 1, category: 'cooking' },
 ];
 
+// New crafted items
+export const CRAFTED_ITEMS: (ItemDef & { effect?: FoodEffect })[] = [
+  { id: 'teleport_stone', name: 'Teleport Stone', description: 'Warps you forward on the map', category: 'consumable', stackable: true, maxStack: 3, value: 40, color: '#aa44ff', rarity: 'rare', minFloor: 1 },
+  { id: 'mana_crystal', name: 'Mana Crystal', description: 'Restores energy and boosts damage briefly', category: 'consumable', stackable: true, maxStack: 5, value: 25, color: '#4488ff', rarity: 'uncommon', minFloor: 1, effect: { damageBonus: 8, duration: 30 } },
+];
+
 export const ALL_ITEMS: ItemDef[] = [
   ...INGREDIENTS,
   ...FOODS,
   ...MATERIALS,
+  ...CRAFTED_ITEMS,
 ];
+
+// ============================================================
+// Hotbar & Combo Queue Types
+// ============================================================
+
+export type HotbarSlotKind = 'spell' | 'item' | 'empty';
+
+export interface HotbarSlot {
+  kind: HotbarSlotKind;
+  ref?: string; // spell: MagicType or combo id, item: item id
+}
+
+export type QueueEntry = { kind: 'spell' | 'item'; ref: string };
+
+export const HOTBAR_SIZE = 5;
+
+// ============================================================
+// Combo Recipes (unified cooking/crafting via combo queue)
+// ============================================================
+
+export interface ComboRecipeDef {
+  id: string;
+  name: string;
+  elements: { kind: 'spell' | 'item'; ref: string }[];
+  result: string; // item id to produce
+  resultCount: number;
+  category: 'cooking' | 'crafting';
+}
+
+export const COMBO_RECIPES: ComboRecipeDef[] = [
+  // Cooking — fire spell cooks things
+  { id: 'cr_cooked_meat', name: 'Cooked Meat', elements: [{ kind: 'spell', ref: 'fire' }, { kind: 'item', ref: 'meat_raw' }], result: 'cooked_meat', resultCount: 1, category: 'cooking' },
+  { id: 'cr_herb_soup', name: 'Herb Soup', elements: [{ kind: 'spell', ref: 'fire' }, { kind: 'item', ref: 'herb_green' }, { kind: 'item', ref: 'crystal_water' }], result: 'herb_soup', resultCount: 1, category: 'cooking' },
+  { id: 'cr_spicy_stew', name: 'Spicy Stew', elements: [{ kind: 'spell', ref: 'fire' }, { kind: 'item', ref: 'meat_raw' }, { kind: 'item', ref: 'herb_red' }], result: 'spicy_stew', resultCount: 1, category: 'cooking' },
+  { id: 'cr_frost_salad', name: 'Frost Salad', elements: [{ kind: 'item', ref: 'herb_green' }, { kind: 'item', ref: 'frost_berry' }, { kind: 'spell', ref: 'ice' }], result: 'frost_salad', resultCount: 1, category: 'cooking' },
+  { id: 'cr_thunder_cake', name: 'Thunder Cake', elements: [{ kind: 'item', ref: 'mushroom' }, { kind: 'item', ref: 'thunder_spice' }, { kind: 'spell', ref: 'lightning' }], result: 'thunder_cake', resultCount: 1, category: 'cooking' },
+  // Crafting — arcane spell for magical items
+  { id: 'cr_teleport_stone', name: 'Teleport Stone', elements: [{ kind: 'spell', ref: 'arcane' }, { kind: 'item', ref: 'iron_ore' }, { kind: 'item', ref: 'magic_dust' }], result: 'teleport_stone', resultCount: 1, category: 'crafting' },
+  { id: 'cr_mana_crystal', name: 'Mana Crystal', elements: [{ kind: 'spell', ref: 'crystal' }, { kind: 'item', ref: 'magic_dust' }], result: 'mana_crystal', resultCount: 1, category: 'crafting' },
+];
+
+export function findComboRecipe(queue: QueueEntry[]): ComboRecipeDef | undefined {
+  // Sort queue entries for order-independent matching
+  const sortedQueue = [...queue].sort((a, b) => {
+    if (a.kind !== b.kind) return a.kind.localeCompare(b.kind);
+    return a.ref.localeCompare(b.ref);
+  });
+  const queueKey = sortedQueue.map((e) => `${e.kind}:${e.ref}`).join('|');
+
+  return COMBO_RECIPES.find((recipe) => {
+    if (recipe.elements.length !== queue.length) return false;
+    const sortedRecipe = [...recipe.elements].sort((a, b) => {
+      if (a.kind !== b.kind) return a.kind.localeCompare(b.kind);
+      return a.ref.localeCompare(b.ref);
+    });
+    const recipeKey = sortedRecipe.map((e) => `${e.kind}:${e.ref}`).join('|');
+    return queueKey === recipeKey;
+  });
+}
+
+// ============================================================
+// Lookup helpers
+// ============================================================
 
 export function getItemDef(id: string): ItemDef | undefined {
   return ALL_ITEMS.find((item) => item.id === id);
@@ -86,7 +156,9 @@ export function getItemDef(id: string): ItemDef | undefined {
 
 export function getFoodEffect(id: string): FoodEffect | undefined {
   const food = FOODS.find((f) => f.id === id);
-  return food?.effect;
+  if (food) return food.effect;
+  const crafted = CRAFTED_ITEMS.find((c) => c.id === id);
+  return crafted?.effect;
 }
 
 export function getIngredientsForFloor(floor: number): ItemDef[] {

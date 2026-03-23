@@ -1,5 +1,6 @@
 import { Player } from '../entities/player';
 import { MagicType } from '../data/spells';
+import { HotbarSlot } from '../data/items';
 
 const SAVE_KEY = 'arcania_save';
 
@@ -10,6 +11,7 @@ export interface MetaSave {
   unlockedMagics: MagicType[];
   discoveredCombos: string[];
   discoveredRecipes: string[];
+  hotbarConfig?: HotbarSlot[];
   permanentUpgrades: PermanentUpgrades;
   lastSaveTime: number;
 }
