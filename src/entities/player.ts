@@ -4,7 +4,7 @@ import { DungeonMap, isTileWalkable, worldToTile } from '../systems/dungeon';
 import { FoodEffect, HotbarSlot, QueueEntry, HOTBAR_SIZE } from '../data/items';
 import {
   MagicType, SpellTier, STARTING_MAGIC_TYPES,
-  getHighestUnlockedTier, getActiveSpellForMagic, getSpellById, SpellDef,
+  getHighestUnlockedTier, getActiveSpellForMagic, getSpellById, SpellDef, COMBO_SPELLS,
 } from '../data/spells';
 
 export interface PlayerMagic {
@@ -82,7 +82,7 @@ export function createPlayer(): Player {
     magics: STARTING_MAGIC_TYPES.map((mt) => ({ magicType: mt, xp: 0 })),
     hotbar: [
       { kind: 'spell', ref: 'fire' },
-      { kind: 'spell', ref: 'arcane' },
+      { kind: 'spell', ref: 'light' },
       { kind: 'empty' },
       { kind: 'empty' },
       { kind: 'empty' },
@@ -199,9 +199,9 @@ export function getActiveSpell(player: Player): SpellDef | undefined {
   const slot = player.hotbar[player.activeHotbarIndex];
   if (!slot || slot.kind !== 'spell' || !slot.ref) return undefined;
 
-  // Check if it's a combo spell
-  const comboSpell = getSpellById(slot.ref);
-  if (comboSpell) return comboSpell;
+  // Check if it's a discovered combo spell
+  const isCombo = COMBO_SPELLS.some((c) => c.id === slot.ref);
+  if (isCombo) return getSpellById(slot.ref);
 
   // Base magic type — find XP from magics array
   const magic = player.magics.find((m) => m.magicType === slot.ref);

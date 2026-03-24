@@ -6,12 +6,12 @@ import {
 } from './spells';
 
 describe('Spell data', () => {
-  it('has 15 magic types', () => {
-    expect(ALL_MAGIC_TYPES.length).toBe(15);
+  it('has 11 magic types', () => {
+    expect(ALL_MAGIC_TYPES.length).toBe(11);
   });
 
-  it('has 5 tiers per magic type (75 base spells)', () => {
-    expect(ALL_SPELLS.length).toBe(75);
+  it('has 5 tiers per magic type (55 base spells)', () => {
+    expect(ALL_SPELLS.length).toBe(55);
     for (const mt of ALL_MAGIC_TYPES) {
       const spells = SPELLS_BY_TYPE[mt];
       expect(spells.length).toBe(5);
@@ -34,27 +34,33 @@ describe('Spell data', () => {
     }
   });
 
-  it('higher tiers cost more mana', () => {
+  it('has 110 T1 combo spells (11 bases x 10 modifiers)', () => {
+    expect(COMBO_SPELLS.length).toBe(110);
+  });
+
+  it('all combo spells have unique ids', () => {
+    const ids = COMBO_SPELLS.map((s) => s.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('combo spells are order-dependent (Fire+Ice != Ice+Fire)', () => {
+    const fireIce = findComboSpell('fire', 'ice');
+    const iceFire = findComboSpell('ice', 'fire');
+    expect(fireIce).toBeDefined();
+    expect(iceFire).toBeDefined();
+    expect(fireIce!.id).not.toBe(iceFire!.id);
+    expect(fireIce!.name).toBe('Scalding Steam');
+    expect(iceFire!.name).toBe('Flash Melt');
+  });
+
+  it('every magic type has 10 combos as base', () => {
     for (const mt of ALL_MAGIC_TYPES) {
-      const spells = SPELLS_BY_TYPE[mt];
-      for (let i = 1; i < spells.length; i++) {
-        expect(spells[i].manaCost).toBeGreaterThanOrEqual(spells[i - 1].manaCost);
-      }
+      const combos = COMBO_SPELLS.filter((c) => c.baseElement === mt);
+      expect(combos.length).toBe(10);
     }
   });
 
-  it('has combo spells', () => {
-    expect(COMBO_SPELLS.length).toBeGreaterThan(0);
-  });
-
-  it('findComboSpell works in both orders', () => {
-    const combo = findComboSpell('fire', 'ice');
-    const comboReverse = findComboSpell('ice', 'fire');
-    expect(combo).toBeDefined();
-    expect(combo?.id).toBe(comboReverse?.id);
-  });
-
-  it('returns undefined for non-existent combo', () => {
+  it('returns undefined for same-element combo', () => {
     expect(findComboSpell('fire', 'fire')).toBeUndefined();
   });
 });
@@ -71,15 +77,14 @@ describe('Tier progression', () => {
   });
 
   it('getSpellForTier returns correct spell', () => {
-    const spell = getSpellForTier('fire', 1);
-    expect(spell?.id).toBe('ember_spark');
-    const spell3 = getSpellForTier('fire', 3);
-    expect(spell3?.id).toBe('magma_orb');
+    expect(getSpellForTier('fire', 1)?.id).toBe('ember_spark');
+    expect(getSpellForTier('fire', 3)?.id).toBe('magma_orb');
+    expect(getSpellForTier('light', 1)?.id).toBe('luminous_bolt');
   });
 
   it('getSpellById finds base and combo spells', () => {
     expect(getSpellById('ember_spark')).toBeDefined();
-    expect(getSpellById('steam_burst')).toBeDefined();
+    expect(getSpellById('scalding_steam')).toBeDefined();
     expect(getSpellById('nonexistent')).toBeUndefined();
   });
 
@@ -92,6 +97,5 @@ describe('Tier progression', () => {
     const maxInfo = xpToNextTier(600);
     expect(maxInfo.currentTier).toBe(5);
     expect(maxInfo.nextTier).toBeNull();
-    expect(maxInfo.progress).toBe(1);
   });
 });

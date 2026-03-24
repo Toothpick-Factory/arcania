@@ -14,7 +14,7 @@ describe('Player creation', () => {
     expect(p.gold).toBe(0);
     expect(p.magics.length).toBe(2); // fire + arcane
     expect(p.magics[0].magicType).toBe('fire');
-    expect(p.magics[1].magicType).toBe('arcane');
+    expect(p.magics[1].magicType).toBe('light');
   });
 });
 
@@ -141,7 +141,7 @@ describe('Player magic types', () => {
   it('starts with fire and arcane', () => {
     const p = createPlayer();
     expect(hasMagic(p, 'fire')).toBe(true);
-    expect(hasMagic(p, 'arcane')).toBe(true);
+    expect(hasMagic(p, 'light')).toBe(true);
     expect(hasMagic(p, 'ice')).toBe(false);
   });
 

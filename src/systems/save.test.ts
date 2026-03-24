@@ -8,7 +8,7 @@ describe('Save system', () => {
     expect(meta.totalRuns).toBe(0);
     expect(meta.bestFloor).toBe(0);
     expect(meta.unlockedMagics).toContain('fire');
-    expect(meta.unlockedMagics).toContain('arcane');
+    expect(meta.unlockedMagics).toContain('light');
     expect(meta.discoveredCombos).toHaveLength(0);
     expect(meta.discoveredRecipes).toHaveLength(0);
   });

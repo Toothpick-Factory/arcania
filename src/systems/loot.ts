@@ -11,9 +11,9 @@ export interface LootDrop {
 
 // Order in which magic types are unlocked through gameplay
 const MAGIC_UNLOCK_ORDER: MagicType[] = [
-  'ice', 'earth', 'lightning', 'wind', 'poison',
-  'holy', 'blood', 'crystal', 'thorns', 'necrotic',
-  'lunar', 'minion', 'illusion',
+  'ice', 'earth', 'lightning', 'poison',
+  'blood', 'crystal', 'necrotic',
+  'lunar', 'minion',
 ];
 
 export function generateLoot(enemyDef: EnemyDef, floor: number, unlockedMagics: MagicType[]): LootDrop {

@@ -123,7 +123,7 @@ export const COMBO_RECIPES: ComboRecipeDef[] = [
   { id: 'cr_frost_salad', name: 'Frost Salad', elements: [{ kind: 'item', ref: 'herb_green' }, { kind: 'item', ref: 'frost_berry' }, { kind: 'spell', ref: 'ice' }], result: 'frost_salad', resultCount: 1, category: 'cooking' },
   { id: 'cr_thunder_cake', name: 'Thunder Cake', elements: [{ kind: 'item', ref: 'mushroom' }, { kind: 'item', ref: 'thunder_spice' }, { kind: 'spell', ref: 'lightning' }], result: 'thunder_cake', resultCount: 1, category: 'cooking' },
   // Crafting — arcane spell for magical items
-  { id: 'cr_teleport_stone', name: 'Teleport Stone', elements: [{ kind: 'spell', ref: 'arcane' }, { kind: 'item', ref: 'iron_ore' }, { kind: 'item', ref: 'magic_dust' }], result: 'teleport_stone', resultCount: 1, category: 'crafting' },
+  { id: 'cr_teleport_stone', name: 'Teleport Stone', elements: [{ kind: 'spell', ref: 'lunar' }, { kind: 'item', ref: 'iron_ore' }, { kind: 'item', ref: 'magic_dust' }], result: 'teleport_stone', resultCount: 1, category: 'crafting' },
   { id: 'cr_mana_crystal', name: 'Mana Crystal', elements: [{ kind: 'spell', ref: 'crystal' }, { kind: 'item', ref: 'magic_dust' }], result: 'mana_crystal', resultCount: 1, category: 'crafting' },
 ];
 

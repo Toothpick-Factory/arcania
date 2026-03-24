@@ -29,7 +29,7 @@ export function getDefaultMeta(): MetaSave {
     totalRuns: 0,
     bestFloor: 0,
     totalGoldEarned: 0,
-    unlockedMagics: ['fire', 'arcane'],
+    unlockedMagics: ['fire', 'light'],
     discoveredCombos: [],
     discoveredRecipes: [],
     permanentUpgrades: {
