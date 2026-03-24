@@ -382,12 +382,28 @@ export class Game {
       saveMetaProgress(this.meta);
     }
 
-    // R2: Floor timer countdown
+    // FB2: Floor timer — teleport to boss at 0, force next floor if boss dead
     if (this.state.floorTimer > 0) {
       this.state.floorTimer -= dt;
       if (this.state.floorTimer <= 0) {
         this.state.floorTimer = 0;
-        this.addNotification('TIME UP! Find the boss!', '#ff4444');
+        const bossAlive = this.enemies.some((e) => e.active && e.def.behavior === 'boss');
+        if (bossAlive) {
+          // Teleport player to boss room
+          const bossPos = getRoomCenterWorld(this.dungeon.bossRoom);
+          this.player.position = { ...bossPos };
+          this.addNotification('TIME UP! Teleported to the boss!', '#ff4444');
+        } else {
+          // Boss already dead — force next floor
+          if (this.state.floor >= 5) {
+            this.menu.type = 'victory';
+            updateMetaFromRun(this.meta, this.player, this.state.floor);
+            saveMetaProgress(this.meta);
+          } else {
+            this.state.floor++;
+            this.generateFloor();
+          }
+        }
       } else if (this.state.floorTimer <= 30 && Math.floor(this.state.floorTimer) % 10 === 0 && this.state.floorTimer % 1 < dt) {
         this.addNotification(`${Math.ceil(this.state.floorTimer)}s remaining!`, '#ff8844');
       }

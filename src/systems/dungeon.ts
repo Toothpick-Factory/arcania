@@ -23,11 +23,11 @@ export interface DungeonMap {
   floor: number;
 }
 
-const MIN_ROOM_SIZE = 7;
-const MAX_ROOM_SIZE = 14;
-const CORRIDOR_WIDTH = 2;
-const MAP_WIDTH = 80;
-const MAP_HEIGHT = 80;
+const MIN_ROOM_SIZE = 8;
+const MAX_ROOM_SIZE = 16;
+const CORRIDOR_WIDTH = 3;
+const MAP_WIDTH = 100;
+const MAP_HEIGHT = 100;
 
 export function generateDungeon(floor: number): DungeonMap {
   const width = MAP_WIDTH + Math.floor(floor * 3);
@@ -131,15 +131,22 @@ export function generateDungeon(floor: number): DungeonMap {
   }
   bossRoom.locked = false; // unlocked until player enters
 
-  // Place special rooms
+  // Place special rooms — FB2/3: 3 tiers of bosses
   const midRooms = shuffleArray(rooms.slice(1, -1));
-  if (midRooms.length > 0) midRooms[0].type = 'shop';
-  if (midRooms.length > 1) midRooms[1].type = 'cooking';
-  if (midRooms.length > 2) midRooms[2].type = 'treasure';
-  // R2: Add mini-bosses (2-3 per floor)
-  const miniBossCount = Math.min(3, Math.max(2, Math.floor(midRooms.length / 3)));
-  for (let i = 3; i < 3 + miniBossCount && i < midRooms.length; i++) {
-    midRooms[i].type = 'miniboss';
+  let idx = 0;
+  if (midRooms.length > idx) { midRooms[idx].type = 'shop'; idx++; }
+  if (midRooms.length > idx) { midRooms[idx].type = 'cooking'; idx++; }
+  if (midRooms.length > idx) { midRooms[idx].type = 'treasure'; idx++; }
+  // Entry-difficulty bosses (3-4 per floor)
+  const entryBossCount = Math.min(4, Math.max(3, Math.floor(midRooms.length / 4)));
+  for (let i = 0; i < entryBossCount && idx < midRooms.length; i++) {
+    midRooms[idx].type = 'miniboss'; idx++;
+  }
+  // Elite-difficulty bosses (1-2 per floor)
+  const eliteBossCount = Math.min(2, Math.max(1, Math.floor(midRooms.length / 6)));
+  for (let i = 0; i < eliteBossCount && idx < midRooms.length; i++) {
+    midRooms[idx].type = 'miniboss'; idx++;
+    // Make elite rooms bigger
   }
 
   // Assign enemy counts

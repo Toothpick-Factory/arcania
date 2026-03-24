@@ -1,6 +1,6 @@
 import { Vec2, TILE_SIZE } from '../engine/types';
 import { InputManager } from '../engine/input';
-import { DungeonMap, isTileWalkable, worldToTile } from '../systems/dungeon';
+import { DungeonMap, isTileWalkable, worldToTile, findRoomAt } from '../systems/dungeon';
 import { FoodEffect, HotbarSlot, QueueEntry, HOTBAR_SIZE } from '../data/items';
 import {
   MagicType, SpellTier, ALL_MAGIC_TYPES,
@@ -142,6 +142,19 @@ export function updatePlayer(player: Player, input: InputManager, dungeon: Dunge
     }
   }
   if (canMoveY) player.position.y = newY;
+
+  // FB3: Enforce locked room boundaries — can't leave a locked boss room
+  const playerTile = worldToTile(player.position.x, player.position.y);
+  const currentRoom = findRoomAt(dungeon, playerTile.x, playerTile.y);
+  if (currentRoom && currentRoom.locked) {
+    // Clamp position to room bounds
+    const roomLeft = currentRoom.x * 32 + halfW + 4;
+    const roomRight = (currentRoom.x + currentRoom.width) * 32 - halfW - 4;
+    const roomTop = currentRoom.y * 32 + halfH + 4;
+    const roomBottom = (currentRoom.y + currentRoom.height) * 32 - halfH - 4;
+    player.position.x = Math.max(roomLeft, Math.min(roomRight, player.position.x));
+    player.position.y = Math.max(roomTop, Math.min(roomBottom, player.position.y));
+  }
 
   // Update facing direction
   if (move.x !== 0 || move.y !== 0) {
