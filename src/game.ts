@@ -16,7 +16,7 @@ import {
 } from './entities/projectile';
 import {
   DungeonMap, generateDungeon, getRoomCenterWorld, worldToTile,
-  updateVisibility, findRoomAt
+  updateVisibility, findRoomAt, lineOfSightClamp
 } from './systems/dungeon';
 import {
   MagicType, SpellDef, COMBO_SPELLS, findComboSpell, getSpellById,
@@ -459,13 +459,19 @@ export class Game {
     if (spellDef.shieldAmount) addShield(this.player, spellDef.shieldAmount, spellDef.shieldDuration || 5);
     if (spellDef.healAmount) healPlayer(this.player, spellDef.healAmount);
 
+    // Line-of-sight: clamp target position to last walkable tile
+    const targetWorld = lineOfSightClamp(this.dungeon, this.player.position, mouseWorld);
+    const clampedDir = vec2Normalize(vec2Sub(targetWorld, this.player.position));
+    const finalDir = vec2Len(clampedDir) > 0 ? clampedDir : dir;
+
     // Cast
     if (spellDef.projectileSpeed > 0) {
       this.projectiles.push(
-        createProjectile(spellDef, this.player.position, dir, this.player.baseDamage + getPlayerDamageBonus(this.player), 1)
+        createProjectile(spellDef, this.player.position, finalDir, this.player.baseDamage + getPlayerDamageBonus(this.player), 1)
       );
     } else if (spellDef.aoeRadius > 0) {
-      const pos = spellDef.range > 0 ? mouseWorld : this.player.position;
+      // AoE targets the clamped position (can't place through walls)
+      const pos = spellDef.range > 0 ? targetWorld : this.player.position;
       this.aoeEffects.push(
         createAoeEffect(spellDef, pos, this.player.baseDamage + getPlayerDamageBonus(this.player), 1)
       );

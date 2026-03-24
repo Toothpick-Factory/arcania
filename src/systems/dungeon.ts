@@ -220,3 +220,50 @@ export function findRoomAt(dungeon: DungeonMap, tileX: number, tileY: number): R
     (r) => tileX >= r.x && tileX < r.x + r.width && tileY >= r.y && tileY < r.y + r.height
   );
 }
+
+/**
+ * Raycasts from one world position to another.
+ * Returns the farthest walkable world position along the line before hitting a wall.
+ * If the full path is clear, returns the target position.
+ */
+export function lineOfSightClamp(dungeon: DungeonMap, from: Vec2, to: Vec2): Vec2 {
+  const fromTile = worldToTile(from.x, from.y);
+  const toTile = worldToTile(to.x, to.y);
+
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist === 0) return { ...to };
+
+  const stepSize = TILE_SIZE / 2; // check every half-tile
+  const steps = Math.ceil(dist / stepSize);
+  const sx = dx / steps;
+  const sy = dy / steps;
+
+  let lastGoodX = from.x;
+  let lastGoodY = from.y;
+
+  for (let i = 1; i <= steps; i++) {
+    const cx = from.x + sx * i;
+    const cy = from.y + sy * i;
+    const tile = worldToTile(cx, cy);
+
+    if (!isTileWalkable(dungeon, tile.x, tile.y)) {
+      return { x: lastGoodX, y: lastGoodY };
+    }
+    lastGoodX = cx;
+    lastGoodY = cy;
+  }
+
+  return { ...to };
+}
+
+/**
+ * Returns true if there is a clear line of sight between two world positions.
+ */
+export function hasLineOfSight(dungeon: DungeonMap, from: Vec2, to: Vec2): boolean {
+  const clamped = lineOfSightClamp(dungeon, from, to);
+  const clampedTile = worldToTile(clamped.x, clamped.y);
+  const toTile = worldToTile(to.x, to.y);
+  return clampedTile.x === toTile.x && clampedTile.y === toTile.y;
+}
