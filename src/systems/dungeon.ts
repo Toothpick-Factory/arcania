@@ -261,6 +261,42 @@ export function updateVisibility(dungeon: DungeonMap, playerTileX: number, playe
   }
 }
 
+/**
+ * R13: Generate a small pre-made lobby area
+ */
+export function generateLobby(): DungeonMap {
+  const width = 20;
+  const height = 20;
+  const tiles: Tile[][] = [];
+  for (let y = 0; y < height; y++) {
+    tiles[y] = [];
+    for (let x = 0; x < width; x++) {
+      tiles[y][x] = { type: 'wall', walkable: false, visible: true, explored: true };
+    }
+  }
+
+  // Carve the lobby room (centered, 12x12)
+  const roomX = 4, roomY = 4, roomW = 12, roomH = 12;
+  for (let ry = roomY; ry < roomY + roomH; ry++) {
+    for (let rx = roomX; rx < roomX + roomW; rx++) {
+      tiles[ry][rx] = { type: 'floor', walkable: true, visible: true, explored: true };
+    }
+  }
+
+  // Portal tile at the top center
+  tiles[roomY + 1][roomX + roomW / 2] = { type: 'stairs', walkable: true, visible: true, explored: true };
+
+  const lobbyRoom: Room = {
+    x: roomX, y: roomY, width: roomW, height: roomH,
+    type: 'spawn', enemyCount: 0, cleared: true, locked: false,
+  };
+
+  return {
+    width, height, tiles, rooms: [lobbyRoom],
+    spawnRoom: lobbyRoom, bossRoom: lobbyRoom, floor: 0,
+  };
+}
+
 export function findRoomAt(dungeon: DungeonMap, tileX: number, tileY: number): Room | undefined {
   return dungeon.rooms.find(
     (r) => tileX >= r.x && tileX < r.x + r.width && tileY >= r.y && tileY < r.y + r.height

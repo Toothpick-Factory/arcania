@@ -15,7 +15,7 @@ import {
   createAoeEffect, updateAoeEffect
 } from './entities/projectile';
 import {
-  DungeonMap, generateDungeon, getRoomCenterWorld, worldToTile,
+  DungeonMap, generateDungeon, generateLobby, getRoomCenterWorld, worldToTile,
   updateVisibility, findRoomAt, lineOfSightClamp
 } from './systems/dungeon';
 import {
@@ -61,7 +61,7 @@ export class Game {
     this.menu = createMenuState();
 
     this.state = {
-      scene: 'title',
+      scene: 'lobby',
       paused: false,
       floor: 1,
       runNumber: this.meta.totalRuns,
@@ -69,6 +69,8 @@ export class Game {
       floorTimer: 0,
     };
 
+    // R13: Start in the lobby
+    this.enterLobby();
     this.menu.type = 'hub';
 
     this.loop = new GameLoop(
@@ -177,6 +179,23 @@ export class Game {
     if (action === 'start_run') { this.startNewRun(); return; }
 
     if (this.menu.type !== 'none') { this.input.endFrame(); return; }
+    // Allow movement in lobby too
+    if (this.state.scene === 'lobby') {
+      updatePlayer(this.player, this.input, this.dungeon, dt);
+      this.renderer.followTarget(this.player.position, 0.08);
+      // F at portal starts run
+      if (this.input.isKeyJustPressed('KeyF')) {
+        const pt = worldToTile(this.player.position.x, this.player.position.y);
+        const tile = this.dungeon.tiles[pt.y]?.[pt.x];
+        if (tile?.type === 'stairs') {
+          this.startNewRun();
+          this.input.endFrame();
+          return;
+        }
+      }
+      this.input.endFrame();
+      return;
+    }
     if (this.state.scene !== 'dungeon') { this.input.endFrame(); return; }
 
     this.state.gameTime += dt;
@@ -717,9 +736,21 @@ export class Game {
     // Save hotbar config for next run
     this.meta.hotbarConfig = [...this.player.hotbar];
     saveMetaProgress(this.meta);
-    this.state.scene = 'title';
+    this.enterLobby();
     this.menu.type = 'hub';
     this.menu.selectedIndex = 0;
+  }
+
+  private enterLobby(): void {
+    this.state.scene = 'lobby';
+    this.dungeon = generateLobby();
+    this.enemies = [];
+    this.projectiles = [];
+    this.enemyProjectiles = [];
+    this.aoeEffects = [];
+    this.player = createPlayer();
+    const spawnPos = getRoomCenterWorld(this.dungeon.spawnRoom);
+    this.player.position = { ...spawnPos };
   }
 
   private addNotification(text: string, color: string): void {
@@ -730,11 +761,13 @@ export class Game {
   private render(): void {
     this.renderer.clear();
 
-    if (this.state.scene === 'dungeon' || this.menu.type === 'death' || this.menu.type === 'victory') {
+    if (this.state.scene === 'lobby' || this.state.scene === 'dungeon' || this.menu.type === 'death' || this.menu.type === 'victory') {
       this.renderer.beginCamera();
       renderDungeon(this.renderer, this.dungeon);
       renderAoeEffects(this.renderer, this.aoeEffects);
-      renderEnemies(this.renderer, this.enemies, this.dungeon, this.debugFog);
+      if (this.state.scene !== 'lobby') {
+        renderEnemies(this.renderer, this.enemies, this.dungeon, this.debugFog);
+      }
       renderPlayer(this.renderer, this.player);
       renderProjectiles(this.renderer, this.projectiles);
       renderEnemyProjectiles(this.renderer, this.enemyProjectiles);
