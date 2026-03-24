@@ -7,6 +7,7 @@ export class InputManager {
   private mousePos: Vec2 = { x: 0, y: 0 };
   private mouseDown: boolean = false;
   private mouseJustClicked: boolean = false;
+  private rightMouseJustClicked: boolean = false;
   private canvas: HTMLCanvasElement;
 
   constructor(canvas: HTMLCanvasElement) {
@@ -37,9 +38,13 @@ export class InputManager {
       };
     });
 
-    this.canvas.addEventListener('mousedown', () => {
-      this.mouseDown = true;
-      this.mouseJustClicked = true;
+    this.canvas.addEventListener('mousedown', (e) => {
+      if (e.button === 0) {
+        this.mouseDown = true;
+        this.mouseJustClicked = true;
+      } else if (e.button === 2) {
+        this.rightMouseJustClicked = true;
+      }
     });
 
     this.canvas.addEventListener('mouseup', () => {
@@ -76,6 +81,10 @@ export class InputManager {
     return this.mouseJustClicked;
   }
 
+  isRightMouseJustClicked(): boolean {
+    return this.rightMouseJustClicked;
+  }
+
   getMovementVector(): Vec2 {
     let x = 0;
     let y = 0;
@@ -96,5 +105,6 @@ export class InputManager {
     this.keysJustPressed.clear();
     this.keysJustReleased.clear();
     this.mouseJustClicked = false;
+    this.rightMouseJustClicked = false;
   }
 }

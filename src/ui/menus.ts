@@ -95,7 +95,60 @@ export function updateMenu(
       menu.gridCursorX = Math.min(GRID_COLS - 1, menu.gridCursorX + 1);
     }
 
-    // Number keys 1-5 assign highlighted cell to hotbar
+    // R11: Mouse-based grid navigation
+    const mousePos = input.getMousePos();
+    const panelW = 470;
+    const panelX = CANVAS_WIDTH / 2 - panelW / 2;
+    const cellSize = 46;
+    const gap = 4;
+    const gridX = panelX + (panelW - GRID_COLS * (cellSize + gap) + gap) / 2;
+    const gridY = 30 + 55; // panelY + header
+    const mx = mousePos.x - gridX;
+    const my = mousePos.y - gridY;
+    if (mx >= 0 && my >= 0) {
+      const col = Math.floor(mx / (cellSize + gap));
+      const row = Math.floor(my / (cellSize + gap));
+      if (col >= 0 && col < GRID_COLS && row >= 0 && row < GRID_ROWS) {
+        menu.gridCursorX = col;
+        menu.gridCursorY = row;
+      }
+    }
+
+    // R11: Mouse click acts as Enter in inventory
+    if (input.isMouseJustClicked()) {
+      const cells = buildInventoryGrid(player);
+      const idx = menu.gridCursorY * GRID_COLS + menu.gridCursorX;
+      const cell = cells[idx];
+      if (cell && cell.kind === 'item' && cell.ref) {
+        const effect = getFoodEffect(cell.ref);
+        if (effect) {
+          eatFood(player, cell.ref);
+          menu.message = 'Consumed!';
+          menu.messageTimer = 1.5;
+        }
+      }
+      return null;
+    }
+
+    // R12: Right-click food to queue it for spell casting
+    if (input.isRightMouseJustClicked()) {
+      const cells = buildInventoryGrid(player);
+      const idx = menu.gridCursorY * GRID_COLS + menu.gridCursorX;
+      const cell = cells[idx];
+      if (cell && cell.kind !== 'empty' && cell.ref) {
+        if (player.comboQueue.length < 3) {
+          player.comboQueue.push({ kind: cell.kind as 'spell' | 'item', ref: cell.ref });
+          menu.message = `Added ${cell.name} to combo queue`;
+          menu.messageTimer = 1.5;
+        } else {
+          menu.message = 'Combo queue full!';
+          menu.messageTimer = 1.5;
+        }
+      }
+      return null;
+    }
+
+    // Number keys 1-4 assign highlighted cell to hotbar
     for (let i = 0; i < HOTBAR_SIZE; i++) {
       if (input.isKeyJustPressed(`Digit${i + 1}`)) {
         const cells = buildInventoryGrid(player);
