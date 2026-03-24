@@ -28,7 +28,7 @@ import { MetaSave, loadMetaProgress, saveMetaProgress, updateMetaFromRun } from 
 import { generateLoot } from './systems/loot';
 import { Shop, generateShop } from './systems/shop';
 import { MenuState, createMenuState, updateMenu, renderMenu } from './ui/menus';
-import { renderHUD, renderMinimap } from './ui/hud';
+import { renderHUD, renderMinimap, zoomMinimap } from './ui/hud';
 import {
   renderDungeon, renderPlayer, renderEnemies, renderProjectiles,
   renderEnemyProjectiles, renderAoeEffects, renderInteractionPrompt
@@ -182,6 +182,14 @@ export class Game {
       } else {
         this.addNotification('Debug: Fog of War ON', '#ffff00');
       }
+    }
+
+    // R19: +/- zoom minimap
+    if (this.input.isKeyJustPressed('Equal') || this.input.isKeyJustPressed('NumpadAdd')) {
+      zoomMinimap(0.25);
+    }
+    if (this.input.isKeyJustPressed('Minus') || this.input.isKeyJustPressed('NumpadSubtract')) {
+      zoomMinimap(-0.25);
     }
 
     // Spell casting — click fires whatever is queued

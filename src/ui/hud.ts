@@ -212,8 +212,13 @@ function renderBuffs(renderer: Renderer, player: Player): void {
   }
 }
 
+let minimapZoom = 1; // R19: +/- to zoom
+export function zoomMinimap(delta: number): void {
+  minimapZoom = Math.max(0.5, Math.min(3, minimapZoom + delta));
+}
+
 export function renderMinimap(renderer: Renderer, dungeon: DungeonMap, playerTileX: number, playerTileY: number): void {
-  const mapSize = 120;
+  const mapSize = Math.round(120 * minimapZoom);
   const mapX = CANVAS_WIDTH - mapSize - 10;
   const mapY = CANVAS_HEIGHT - mapSize - 10;
   const scale = mapSize / Math.max(dungeon.width, dungeon.height);

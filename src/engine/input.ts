@@ -45,6 +45,11 @@ export class InputManager {
     this.canvas.addEventListener('mouseup', () => {
       this.mouseDown = false;
     });
+
+    // R16: Disable browser right-click menu on the game canvas
+    this.canvas.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+    });
   }
 
   isKeyDown(code: string): boolean {

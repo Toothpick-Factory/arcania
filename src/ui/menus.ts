@@ -6,9 +6,9 @@ import { MetaSave } from '../systems/save';
 import { Shop, buyItem } from '../systems/shop';
 import { getItemDef, getFoodEffect, HOTBAR_SIZE } from '../data/items';
 import { eatFood } from '../systems/cooking';
-import { MagicType, MAGIC_TYPE_COLORS, MAGIC_TYPE_NAMES, getActiveSpellForMagic, getHighestUnlockedTier } from '../data/spells';
+import { MagicType, MAGIC_TYPE_COLORS, MAGIC_TYPE_NAMES, getActiveSpellForMagic, getHighestUnlockedTier, COMBO_SPELLS, getSpellById } from '../data/spells';
 
-export type MenuType = 'none' | 'inventory' | 'shop' | 'pause' | 'controls' | 'death' | 'victory' | 'hub';
+export type MenuType = 'none' | 'inventory' | 'shop' | 'pause' | 'controls' | 'compendium' | 'death' | 'victory' | 'hub';
 
 export interface GridCell {
   kind: 'spell' | 'item' | 'empty';
@@ -48,7 +48,7 @@ export function updateMenu(
 
   // ESC to close menus or open pause
   if (input.isKeyJustPressed('Escape')) {
-    if (menu.type === 'controls') {
+    if (menu.type === 'controls' || menu.type === 'compendium') {
       menu.type = 'pause';
       menu.selectedIndex = 0;
       return null;
@@ -163,9 +163,11 @@ function handleMenuAction(menu: MenuState, player: Player, meta: MetaSave): stri
     case 'pause':
       if (menu.selectedIndex === 0) { menu.type = 'none'; return null; }
       if (menu.selectedIndex === 1) { menu.type = 'controls'; menu.selectedIndex = 0; return null; }
-      if (menu.selectedIndex === 2) return 'restart';
+      if (menu.selectedIndex === 2) { menu.type = 'compendium'; menu.selectedIndex = 0; return null; }
+      if (menu.selectedIndex === 3) return 'restart';
       return null;
     case 'controls':
+    case 'compendium':
       menu.type = 'pause';
       menu.selectedIndex = 0;
       return null;
@@ -190,6 +192,7 @@ export function renderMenu(renderer: Renderer, menu: MenuState, player: Player, 
     case 'shop': renderShop(renderer, menu, player); break;
     case 'pause': renderPause(renderer, menu); break;
     case 'controls': renderControls(renderer); break;
+    case 'compendium': renderCompendium(renderer, player); break;
     case 'death': renderDeath(renderer, player, meta); break;
     case 'victory': renderVictory(renderer, player, meta); break;
     case 'hub': renderHub(renderer, menu, player, meta); break;
@@ -385,6 +388,55 @@ function renderShop(renderer: Renderer, menu: MenuState, player: Player): void {
 }
 
 
+function renderCompendium(renderer: Renderer, player: Player): void {
+  const panelX = CANVAS_WIDTH / 2 - 240;
+  const panelY = 30;
+  const panelW = 480;
+  const panelH = 560;
+
+  renderer.drawRect(panelX, panelY, panelW, panelH, '#1a1a2e');
+  renderer.drawRectOutline(panelX, panelY, panelW, panelH, '#ffdd44');
+  renderer.drawText('SPELL COMPENDIUM', CANVAS_WIDTH / 2, panelY + 12, '#ffdd44', 20, 'center');
+
+  const discovered = player.discoveredCombos;
+  renderer.drawText(`Discovered: ${discovered.length} / ${COMBO_SPELLS.length}`, CANVAS_WIDTH / 2, panelY + 38, '#aaaaaa', 12, 'center');
+
+  if (discovered.length === 0) {
+    renderer.drawText('No combos discovered yet!', CANVAS_WIDTH / 2, panelY + 80, '#888888', 14, 'center');
+    renderer.drawText('Queue two different spells and click to discover combos', CANVAS_WIDTH / 2, panelY + 100, '#666666', 11, 'center');
+  } else {
+    let y = panelY + 60;
+    for (let i = 0; i < discovered.length && y < panelY + panelH - 30; i++) {
+      const comboId = discovered[i];
+      const combo = COMBO_SPELLS.find((c) => c.id === comboId);
+      if (!combo) continue;
+
+      const baseColor = MAGIC_TYPE_COLORS[combo.baseElement] || '#888888';
+      const modColor = MAGIC_TYPE_COLORS[combo.modElement] || '#888888';
+      const baseName = MAGIC_TYPE_NAMES[combo.baseElement] || combo.baseElement;
+      const modName = MAGIC_TYPE_NAMES[combo.modElement] || combo.modElement;
+
+      // Color indicators
+      renderer.drawRect(panelX + 10, y + 2, 12, 12, baseColor);
+      renderer.drawText('+', panelX + 26, y, '#888888', 12);
+      renderer.drawRect(panelX + 36, y + 2, 12, 12, modColor);
+
+      // Combo name
+      renderer.drawText(combo.name, panelX + 58, y, combo.color, 13);
+
+      // Formula
+      renderer.drawText(`${baseName} + ${modName}`, panelX + 280, y, '#888888', 10);
+
+      // Description
+      renderer.drawText(combo.description, panelX + 58, y + 15, '#666666', 9);
+
+      y += 30;
+    }
+  }
+
+  renderer.drawText('[ESC] Back', CANVAS_WIDTH / 2, panelY + panelH - 16, '#555555', 11, 'center');
+}
+
 function renderPause(renderer: Renderer, menu: MenuState): void {
   const panelX = CANVAS_WIDTH / 2 - 140;
   const panelY = CANVAS_HEIGHT / 2 - 100;
@@ -393,7 +445,7 @@ function renderPause(renderer: Renderer, menu: MenuState): void {
   renderer.drawRectOutline(panelX, panelY, 280, 200, '#666688');
   renderer.drawText('PAUSED', CANVAS_WIDTH / 2, panelY + 15, '#ffffff', 24, 'center');
 
-  const options = ['Resume', 'Controls', 'Quit Run'];
+  const options = ['Resume', 'Controls', 'Compendium', 'Return to Lobby'];
   menu.selectedIndex = Math.min(menu.selectedIndex, options.length - 1);
 
   for (let i = 0; i < options.length; i++) {
