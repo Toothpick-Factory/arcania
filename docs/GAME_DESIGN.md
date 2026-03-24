@@ -14,9 +14,10 @@ Top-down action roguelike (Hades/Diablo style). Each run: explore procedural dun
 - **11 magic types**: Fire, Ice, Earth, Poison, Crystal, Light, Blood, Necrotic, Minion, Lightning, Lunar
 - **5 tiers** per type (T1 Basic → T5 Ultimate)
 - **Spells are randomized each run** — you don't keep spells between runs
-- Start with **1 random spell**, find your 2nd quickly
-- Earn additional spells from **boss fights** — bosses are themed after the spell they drop
+- Start with **1 random spell**, find 2nd within first **10 kills** (increasing chance)
+- Earn additional spells from **boss fights** — bosses colored/named after their element
 - **4 hotbar slots** for spells
+- **Max 2 spells per combo** (not 3)
 
 ## Combo System
 - **Order matters**: Fire→Ice ≠ Ice→Fire
