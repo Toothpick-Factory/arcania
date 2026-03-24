@@ -3,7 +3,7 @@ import { InputManager } from '../engine/input';
 import { DungeonMap, isTileWalkable, worldToTile } from '../systems/dungeon';
 import { FoodEffect, HotbarSlot, QueueEntry, HOTBAR_SIZE } from '../data/items';
 import {
-  MagicType, SpellTier, STARTING_MAGIC_TYPES,
+  MagicType, SpellTier, ALL_MAGIC_TYPES,
   getHighestUnlockedTier, getActiveSpellForMagic, getSpellById, SpellDef, COMBO_SPELLS,
 } from '../data/spells';
 
@@ -83,10 +83,9 @@ export function createPlayer(): Player {
     xp: 0,
     xpToNext: 50,
     gold: 0,
-    magics: STARTING_MAGIC_TYPES.map((mt) => ({ magicType: mt, xp: 0 })),
+    magics: [], // populated by startNewRun with randomized spells
     hotbar: [
-      { kind: 'spell', ref: 'fire' },
-      { kind: 'spell', ref: 'light' },
+      { kind: 'empty' },
       { kind: 'empty' },
       { kind: 'empty' },
       { kind: 'empty' },

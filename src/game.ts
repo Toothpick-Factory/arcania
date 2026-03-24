@@ -20,7 +20,7 @@ import {
 } from './systems/dungeon';
 import {
   MagicType, SpellDef, COMBO_SPELLS, findComboSpell, getSpellById,
-  getActiveSpellForMagic, MAGIC_TYPE_NAMES, MAGIC_TYPE_COLORS,
+  getActiveSpellForMagic, getHighestUnlockedTier, MAGIC_TYPE_NAMES, MAGIC_TYPE_COLORS, ALL_MAGIC_TYPES,
 } from './data/spells';
 import { findComboRecipe, getItemDef, getFoodEffect, QueueEntry } from './data/items';
 import { getEnemiesForFloor, getBossForFloor, scaleEnemyForFloor } from './data/enemies';
@@ -93,21 +93,15 @@ export class Game {
     this.player.baseDamage += up.damageBonus;
     this.player.speed += up.speedBonus;
 
-    // Unlock previously discovered magic types
-    for (const mt of this.meta.unlockedMagics) {
-      if (!hasMagic(this.player, mt)) {
-        unlockMagic(this.player, mt);
-      }
-    }
+    // Randomize starting spell — 1 random spell per run (spells don't carry over)
+    const startingSpell = randomChoice(ALL_MAGIC_TYPES);
+    unlockMagic(this.player, startingSpell);
+    this.player.hotbar[0] = { kind: 'spell', ref: startingSpell };
+    this.addNotification(`Starting spell: ${MAGIC_TYPE_NAMES[startingSpell]}`, MAGIC_TYPE_COLORS[startingSpell]);
 
-    // Restore discovered combos
+    // Restore discovered combos (these persist across runs)
     if (this.meta.discoveredCombos) {
       this.player.discoveredCombos = [...this.meta.discoveredCombos];
-    }
-
-    // Restore hotbar from meta if available
-    if (this.meta.hotbarConfig) {
-      this.player.hotbar = [...this.meta.hotbarConfig];
     }
 
     this.generateFloor();
@@ -341,30 +335,66 @@ export class Game {
     const queue = this.player.comboQueue;
 
     if (queue.length >= 2) {
-      // Multi-element combo attempt
-      // 1. Check spell+spell combo (only if both are spells)
+      // Check spell+spell combo
       const allSpells = queue.every((e) => e.kind === 'spell');
       if (allSpells && queue.length === 2) {
-        const comboDef = findComboSpell(queue[0].ref as MagicType, queue[1].ref as MagicType);
-        if (comboDef && !this.player.spellCooldowns.has(comboDef.id)) {
+        const primaryRef = queue[0].ref as MagicType;
+        const secondaryRef = queue[1].ref as MagicType;
+
+        // R8: Only primary element goes on cooldown — check primary CD
+        const primaryMagic = this.player.magics.find((m) => m.magicType === primaryRef);
+        const primarySpell = primaryMagic ? getActiveSpellForMagic(primaryRef, primaryMagic.xp) : null;
+        if (primarySpell && this.player.spellCooldowns.has(primarySpell.id)) {
+          this.addNotification('Primary spell on cooldown!', '#ff8844');
+          this.player.comboQueue = [];
+          return;
+        }
+
+        // Look for defined combo
+        const comboDef = findComboSpell(primaryRef, secondaryRef);
+        if (comboDef) {
+          // R5: Secondary is multiplicative but lengthens CD if higher tier
+          const secondaryMagic = this.player.magics.find((m) => m.magicType === secondaryRef);
+          const secondaryTier = secondaryMagic ? getHighestUnlockedTier(secondaryMagic.xp) : 1;
+          const cdMultiplier = 1 + (secondaryTier - 1) * 0.2; // T1=1x, T2=1.2x, T3=1.4x, T4=1.6x, T5=1.8x
+
           this.fireSpell(comboDef);
+
+          // R8: Only put primary on cooldown (with modifier from secondary tier)
+          if (primarySpell) {
+            this.player.spellCooldowns.set(primarySpell.id, primarySpell.cooldown * cdMultiplier);
+          }
+
+          // Discover combo
           if (!this.player.discoveredCombos.includes(comboDef.id)) {
             this.player.discoveredCombos.push(comboDef.id);
             if (!this.meta.discoveredCombos) this.meta.discoveredCombos = [];
             if (!this.meta.discoveredCombos.includes(comboDef.id)) {
               this.meta.discoveredCombos.push(comboDef.id);
             }
-            this.addNotification(`SPELL COMBO: ${comboDef.name}!`, '#ffff00');
+            this.addNotification(`COMBO: ${comboDef.name}!`, '#ffff00');
             this.addNotification(`${comboDef.description}`, comboDef.color);
           }
-          addMagicXp(this.player, queue[0].ref, 5);
-          addMagicXp(this.player, queue[1].ref, 5);
-          this.player.comboQueue = [];
-          return;
+
+          addMagicXp(this.player, primaryRef, 5);
+          addMagicXp(this.player, secondaryRef, 3);
+        } else {
+          // R10: No fizzle — cast primary spell with a damage boost from secondary
+          if (primarySpell) {
+            this.fireSpell(primarySpell);
+            if (primarySpell) {
+              this.player.spellCooldowns.set(primarySpell.id, primarySpell.cooldown);
+            }
+            addMagicXp(this.player, primaryRef, 2);
+            addMagicXp(this.player, secondaryRef, 1);
+          }
         }
+
+        this.player.comboQueue = [];
+        return;
       }
 
-      // 2. Check mixed combo recipes (spell+item, item+item+spell, etc.)
+      // Check mixed combo recipes (spell+item)
       const comboRecipe = findComboRecipe(queue);
       if (comboRecipe) {
         this.handleComboRecipe(comboRecipe);
@@ -372,8 +402,17 @@ export class Game {
         return;
       }
 
-      // 3. No match — fizzle
-      this.addNotification('Combo fizzled!', '#ff4444');
+      // No recipe match — cast primary if it's a spell
+      if (queue[0].kind === 'spell') {
+        const magic = this.player.magics.find((m) => m.magicType === queue[0].ref);
+        if (magic) {
+          const spellDef = getActiveSpellForMagic(queue[0].ref as MagicType, magic.xp);
+          if (spellDef && !this.player.spellCooldowns.has(spellDef.id)) {
+            this.fireSpell(spellDef);
+            addMagicXp(this.player, queue[0].ref, 1);
+          }
+        }
+      }
       this.player.comboQueue = [];
 
     } else if (queue.length === 1) {
@@ -529,7 +568,7 @@ export class Game {
   }
 
   private handleEnemyKill(enemy: Enemy): void {
-    const loot = generateLoot(enemy.def, this.state.floor, this.meta.unlockedMagics);
+    const loot = generateLoot(enemy.def, this.state.floor, this.player.magics.map((m) => m.magicType as MagicType));
 
     this.player.gold += loot.gold;
     if (loot.gold > 0) this.addNotification(`+${loot.gold} gold`, '#ffdd44');
@@ -537,6 +576,14 @@ export class Game {
     for (const { item, count } of loot.items) {
       addItemToInventory(this.player, item.id, count);
       this.addNotification(`+${count} ${item.name}`, item.color);
+    }
+
+    // R6: Guarantee 2nd spell quickly — if player has only 1 spell, force a drop
+    if (!loot.magicUnlock && this.player.magics.length <= 1) {
+      const available = ALL_MAGIC_TYPES.filter((mt) => !hasMagic(this.player, mt));
+      if (available.length > 0) {
+        loot.magicUnlock = randomChoice(available);
+      }
     }
 
     if (loot.magicUnlock) {

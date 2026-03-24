@@ -12,9 +12,7 @@ describe('Player creation', () => {
     expect(p.maxHp).toBe(100);
     expect(p.level).toBe(1);
     expect(p.gold).toBe(0);
-    expect(p.magics.length).toBe(2); // fire + arcane
-    expect(p.magics[0].magicType).toBe('fire');
-    expect(p.magics[1].magicType).toBe('light');
+    expect(p.magics.length).toBe(0); // empty — populated by startNewRun
   });
 });
 
@@ -89,12 +87,14 @@ describe('Player XP and leveling', () => {
 
   it('magic XP accumulates', () => {
     const p = createPlayer();
+    unlockMagic(p, 'fire');
     addMagicXp(p, 'fire', 20);
     expect(p.magics[0].xp).toBe(20);
   });
 
   it('magic XP triggers tier unlock', () => {
     const p = createPlayer();
+    unlockMagic(p, 'fire');
     const result = addMagicXp(p, 'fire', 40); // threshold for tier 2
     expect(result.leveled).toBe(true);
     expect(result.newTier).toBe(2);
@@ -138,24 +138,25 @@ describe('Player inventory', () => {
 });
 
 describe('Player magic types', () => {
-  it('starts with fire and arcane', () => {
+  it('starts with no magic (populated by game)', () => {
     const p = createPlayer();
-    expect(hasMagic(p, 'fire')).toBe(true);
-    expect(hasMagic(p, 'light')).toBe(true);
-    expect(hasMagic(p, 'ice')).toBe(false);
+    expect(p.magics.length).toBe(0);
   });
 
   it('unlocks new magic types', () => {
     const p = createPlayer();
+    unlockMagic(p, 'fire');
     unlockMagic(p, 'ice');
+    expect(hasMagic(p, 'fire')).toBe(true);
     expect(hasMagic(p, 'ice')).toBe(true);
-    expect(p.magics.length).toBe(3);
+    expect(p.magics.length).toBe(2);
   });
 
   it('does not duplicate magic types', () => {
     const p = createPlayer();
     unlockMagic(p, 'fire');
-    expect(p.magics.length).toBe(2);
+    unlockMagic(p, 'fire');
+    expect(p.magics.length).toBe(1);
   });
 });
 

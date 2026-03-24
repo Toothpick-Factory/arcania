@@ -100,7 +100,7 @@ export interface HotbarSlot {
 
 export type QueueEntry = { kind: 'spell' | 'item'; ref: string };
 
-export const HOTBAR_SIZE = 5;
+export const HOTBAR_SIZE = 4;
 
 // ============================================================
 // Combo Recipes (unified cooking/crafting via combo queue)

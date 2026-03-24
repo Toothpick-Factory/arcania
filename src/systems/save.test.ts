@@ -7,8 +7,7 @@ describe('Save system', () => {
     const meta = getDefaultMeta();
     expect(meta.totalRuns).toBe(0);
     expect(meta.bestFloor).toBe(0);
-    expect(meta.unlockedMagics).toContain('fire');
-    expect(meta.unlockedMagics).toContain('light');
+    expect(meta.unlockedMagics).toHaveLength(0);
     expect(meta.discoveredCombos).toHaveLength(0);
     expect(meta.discoveredRecipes).toHaveLength(0);
   });
