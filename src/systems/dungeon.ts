@@ -6,7 +6,7 @@ export interface Room {
   y: number;
   width: number;
   height: number;
-  type: 'normal' | 'spawn' | 'boss' | 'shop' | 'cooking' | 'treasure';
+  type: 'normal' | 'spawn' | 'boss' | 'miniboss' | 'shop' | 'cooking' | 'treasure';
   enemyCount: number;
   cleared: boolean;
 }
@@ -21,14 +21,15 @@ export interface DungeonMap {
   floor: number;
 }
 
-const MIN_ROOM_SIZE = 5;
-const MAX_ROOM_SIZE = 10;
-const MAP_WIDTH = 60;
-const MAP_HEIGHT = 60;
+const MIN_ROOM_SIZE = 7;
+const MAX_ROOM_SIZE = 14;
+const CORRIDOR_WIDTH = 2;
+const MAP_WIDTH = 80;
+const MAP_HEIGHT = 80;
 
 export function generateDungeon(floor: number): DungeonMap {
-  const width = MAP_WIDTH + Math.floor(floor * 2);
-  const height = MAP_HEIGHT + Math.floor(floor * 2);
+  const width = MAP_WIDTH + Math.floor(floor * 3);
+  const height = MAP_HEIGHT + Math.floor(floor * 3);
 
   // Initialize all tiles as walls
   const tiles: Tile[][] = [];
@@ -41,7 +42,7 @@ export function generateDungeon(floor: number): DungeonMap {
 
   // Generate rooms using BSP-like approach
   const rooms: Room[] = [];
-  const roomCount = 8 + Math.floor(floor * 1.5);
+  const roomCount = 10 + Math.floor(floor * 2);
   const maxAttempts = roomCount * 20;
 
   for (let i = 0; i < maxAttempts && rooms.length < roomCount; i++) {
@@ -104,11 +105,18 @@ export function generateDungeon(floor: number): DungeonMap {
   if (midRooms.length > 0) midRooms[0].type = 'shop';
   if (midRooms.length > 1) midRooms[1].type = 'cooking';
   if (midRooms.length > 2) midRooms[2].type = 'treasure';
+  // R2: Add mini-bosses (2-3 per floor)
+  const miniBossCount = Math.min(3, Math.max(2, Math.floor(midRooms.length / 3)));
+  for (let i = 3; i < 3 + miniBossCount && i < midRooms.length; i++) {
+    midRooms[i].type = 'miniboss';
+  }
 
-  // Assign enemy counts to normal rooms
+  // Assign enemy counts
   for (const room of rooms) {
     if (room.type === 'normal') {
-      room.enemyCount = randomInt(2, 3 + floor);
+      room.enemyCount = randomInt(3, 4 + floor);
+    } else if (room.type === 'miniboss') {
+      room.enemyCount = 1; // single mini-boss
     } else if (room.type === 'boss') {
       room.enemyCount = 1;
     }
@@ -152,8 +160,12 @@ function carveHCorridor(tiles: Tile[][], x1: number, x2: number, y: number): voi
   const startX = Math.min(x1, x2);
   const endX = Math.max(x1, x2);
   for (let x = startX; x <= endX; x++) {
-    if (y >= 0 && y < tiles.length && x >= 0 && x < tiles[0].length) {
-      tiles[y][x] = { type: 'floor', walkable: true, visible: false, explored: false };
+    // R2: 2-wide corridors
+    for (let dy = 0; dy < CORRIDOR_WIDTH; dy++) {
+      const cy = y + dy;
+      if (cy >= 0 && cy < tiles.length && x >= 0 && x < tiles[0].length) {
+        tiles[cy][x] = { type: 'floor', walkable: true, visible: false, explored: false };
+      }
     }
   }
 }
@@ -162,8 +174,11 @@ function carveVCorridor(tiles: Tile[][], y1: number, y2: number, x: number): voi
   const startY = Math.min(y1, y2);
   const endY = Math.max(y1, y2);
   for (let y = startY; y <= endY; y++) {
-    if (y >= 0 && y < tiles.length && x >= 0 && x < tiles[0].length) {
-      tiles[y][x] = { type: 'floor', walkable: true, visible: false, explored: false };
+    for (let dx = 0; dx < CORRIDOR_WIDTH; dx++) {
+      const cx = x + dx;
+      if (y >= 0 && y < tiles.length && cx >= 0 && cx < tiles[0].length) {
+        tiles[y][cx] = { type: 'floor', walkable: true, visible: false, explored: false };
+      }
     }
   }
 }

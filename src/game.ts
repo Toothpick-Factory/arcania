@@ -66,6 +66,7 @@ export class Game {
       floor: 1,
       runNumber: this.meta.totalRuns,
       gameTime: 0,
+      floorTimer: 0,
     };
 
     this.menu.type = 'hub';
@@ -132,6 +133,21 @@ export class Game {
         continue;
       }
 
+      if (room.type === 'miniboss') {
+        // R2: Mini-bosses — scaled-up regular enemies
+        const availableEnemies = getEnemiesForFloor(this.state.floor);
+        const def = randomChoice(availableEnemies);
+        const miniBoss = scaleEnemyForFloor(def, this.state.floor + 2); // tougher
+        miniBoss.hp = Math.round(miniBoss.hp * 2.5);
+        miniBoss.damage = Math.round(miniBoss.damage * 1.5);
+        miniBoss.size = Math.round(miniBoss.size * 1.5);
+        miniBoss.xpReward = Math.round(miniBoss.xpReward * 3);
+        miniBoss.name = `Elite ${miniBoss.name}`;
+        const pos = getRoomCenterWorld(room);
+        this.enemies.push(createEnemy(miniBoss, pos));
+        continue;
+      }
+
       const availableEnemies = getEnemiesForFloor(this.state.floor);
       for (let i = 0; i < room.enemyCount; i++) {
         const def = randomChoice(availableEnemies);
@@ -148,6 +164,9 @@ export class Game {
     if (shopRoom) {
       this.currentShop = generateShop(this.state.floor);
     }
+
+    // R2: Floor timer (5 min per floor, no timer on final boss floor)
+    this.state.floorTimer = this.state.floor >= 5 ? 0 : 300;
 
     this.addNotification(`Floor ${this.state.floor}`, '#ffdd44');
   }
@@ -319,6 +338,17 @@ export class Game {
       this.menu.type = 'death';
       updateMetaFromRun(this.meta, this.player, this.state.floor);
       saveMetaProgress(this.meta);
+    }
+
+    // R2: Floor timer countdown
+    if (this.state.floorTimer > 0) {
+      this.state.floorTimer -= dt;
+      if (this.state.floorTimer <= 0) {
+        this.state.floorTimer = 0;
+        this.addNotification('TIME UP! Find the boss!', '#ff4444');
+      } else if (this.state.floorTimer <= 30 && Math.floor(this.state.floorTimer) % 10 === 0 && this.state.floorTimer % 1 < dt) {
+        this.addNotification(`${Math.ceil(this.state.floorTimer)}s remaining!`, '#ff8844');
+      }
     }
 
     this.renderer.followTarget(this.player.position, 0.08);
@@ -551,7 +581,7 @@ export class Game {
     if (tile.type === 'stairs') {
       const bossAlive = this.enemies.some((e) => e.active && e.def.behavior === 'boss');
       if (bossAlive) { this.addNotification('Defeat the boss first!', '#ff4444'); return; }
-      if (this.state.floor >= 8) {
+      if (this.state.floor >= 5) {
         this.menu.type = 'victory';
         updateMetaFromRun(this.meta, this.player, this.state.floor);
         saveMetaProgress(this.meta);

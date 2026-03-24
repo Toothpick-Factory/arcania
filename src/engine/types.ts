@@ -25,6 +25,7 @@ export interface GameState {
   floor: number;
   runNumber: number;
   gameTime: number;
+  floorTimer: number;  // seconds remaining on this floor (0 = no timer / boss floor)
 }
 
 export type SceneType = 'title' | 'hub' | 'dungeon' | 'gameover' | 'victory';

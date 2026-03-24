@@ -35,7 +35,15 @@ export function renderHUD(renderer: Renderer, player: Player, state: GameState):
   }
 
   // Floor info
-  renderer.drawText(`Floor ${state.floor}`, CANVAS_WIDTH - 100, 10, '#aaaaaa', 14);
+  renderer.drawText(`Floor ${state.floor}/5`, CANVAS_WIDTH - 100, 10, '#aaaaaa', 14);
+
+  // Floor timer
+  if (state.floorTimer > 0) {
+    const mins = Math.floor(state.floorTimer / 60);
+    const secs = Math.floor(state.floorTimer % 60);
+    const timerColor = state.floorTimer <= 30 ? '#ff4444' : state.floorTimer <= 60 ? '#ff8844' : '#aaaaaa';
+    renderer.drawText(`${mins}:${secs.toString().padStart(2, '0')}`, CANVAS_WIDTH - 100, 46, timerColor, 16);
+  }
   const totalItems = player.inventory.reduce((s, i) => s + i.count, 0);
   renderer.drawText(`Items: ${totalItems}`, CANVAS_WIDTH - 100, 30, '#aaaaaa', 12);
 
