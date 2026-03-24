@@ -169,6 +169,26 @@ export function updateMenu(
     if (input.isKeyJustPressed('ArrowDown') || input.isKeyJustPressed('KeyS')) {
       if (menu.type !== 'none') menu.selectedIndex++;
     }
+
+    // FB11: Mouse click support for list menus (pause, hub, etc.)
+    if (menu.type === 'pause' && input.isMouseJustClicked()) {
+      const mPos = input.getMousePos();
+      const panelY = CANVAS_HEIGHT / 2 - 100;
+      for (let i = 0; i < 4; i++) {
+        const optY = panelY + 60 + i * 35;
+        if (mPos.y >= optY - 5 && mPos.y <= optY + 20 && mPos.x > CANVAS_WIDTH / 2 - 100 && mPos.x < CANVAS_WIDTH / 2 + 100) {
+          menu.selectedIndex = i;
+          return handleMenuAction(menu, player, meta);
+        }
+      }
+    }
+    if (menu.type === 'hub' && input.isMouseJustClicked()) {
+      const mPos = input.getMousePos();
+      if (mPos.y >= 310 && mPos.y <= 360 && mPos.x > CANVAS_WIDTH / 2 - 150 && mPos.x < CANVAS_WIDTH / 2 + 150) {
+        menu.selectedIndex = 0;
+        return handleMenuAction(menu, player, meta);
+      }
+    }
   }
 
   // Actions
@@ -301,6 +321,16 @@ function renderInventory(renderer: Renderer, menu: MenuState, player: Player): v
   renderer.drawRectOutline(panelX, panelY, panelW, panelH, '#444466');
   renderer.drawText('INVENTORY', CANVAS_WIDTH / 2, panelY + 10, '#ffffff', 20, 'center');
   renderer.drawText(`Gold: ${player.gold}`, panelX + 10, panelY + 35, '#ffdd44', 12);
+
+  // FB12: Section labels
+  const spellCount = player.magics.length;
+  const itemCount = player.inventory.length;
+  renderer.drawText(`Spells (${spellCount})`, panelX + 10, panelY + 48, '#8866aa', 10);
+  if (itemCount > 0) {
+    const itemStartRow = Math.ceil(spellCount / GRID_COLS);
+    const itemLabelY = panelY + 55 + itemStartRow * (46 + 4) - 2;
+    renderer.drawText(`Items (${itemCount})`, panelX + 10, Math.min(itemLabelY, panelY + panelH - 100), '#886644', 10);
+  }
 
   // Grid
   const cells = buildInventoryGrid(player);
