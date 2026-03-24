@@ -69,6 +69,23 @@ export function renderPlayer(renderer: Renderer, player: Player): void {
   renderer.drawCircle(x, y + halfH + 2, halfW * 0.8, '#000000');
   renderer.ctx.globalAlpha = 1;
 
+  // Dodge trail effect
+  if (player.dodgeTimer > 0) {
+    renderer.ctx.globalAlpha = 0.3;
+    renderer.drawCircle(
+      x - player.dodgeDir.x * 20,
+      y - player.dodgeDir.y * 20,
+      halfW, '#6644aa'
+    );
+    renderer.ctx.globalAlpha = 0.15;
+    renderer.drawCircle(
+      x - player.dodgeDir.x * 40,
+      y - player.dodgeDir.y * 40,
+      halfW * 0.7, '#6644aa'
+    );
+    renderer.ctx.globalAlpha = 1;
+  }
+
   // Body
   const flash = player.invincibleTimer > 0 && Math.floor(player.invincibleTimer * 10) % 2 === 0;
   if (!flash) {

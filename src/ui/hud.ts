@@ -27,6 +27,13 @@ export function renderHUD(renderer: Renderer, player: Player, state: GameState):
   renderer.drawText(`Lv.${player.level}`, 215, 10, '#ffcc00', 16);
   renderer.drawText(`Gold: ${player.gold}`, 215, 30, '#ffdd44', 14);
 
+  // Dodge cooldown indicator
+  if (player.dodgeCooldown > 0) {
+    renderer.drawText(`Dodge: ${player.dodgeCooldown.toFixed(1)}s`, 10, CANVAS_HEIGHT - 14, '#888888', 10);
+  } else {
+    renderer.drawText('Dodge: Ready', 10, CANVAS_HEIGHT - 14, '#44ff44', 10);
+  }
+
   // Floor info
   renderer.drawText(`Floor ${state.floor}`, CANVAS_WIDTH - 100, 10, '#aaaaaa', 14);
   const totalItems = player.inventory.reduce((s, i) => s + i.count, 0);

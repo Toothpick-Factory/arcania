@@ -60,6 +60,10 @@ export interface Player {
   // Combat
   invincibleTimer: number;
   facing: Vec2;
+  // Dodge
+  dodgeCooldown: number;
+  dodgeTimer: number;      // time remaining in dodge roll (0 = not dodging)
+  dodgeDir: Vec2;
 }
 
 export function createPlayer(): Player {
@@ -98,6 +102,9 @@ export function createPlayer(): Player {
     bestFloor: 0,
     invincibleTimer: 0,
     facing: { x: 1, y: 0 },
+    dodgeCooldown: 0,
+    dodgeTimer: 0,
+    dodgeDir: { x: 0, y: 0 },
   };
 }
 
@@ -138,6 +145,39 @@ export function updatePlayer(player: Player, input: InputManager, dungeon: Dunge
   // Update facing direction
   if (move.x !== 0 || move.y !== 0) {
     player.facing = { x: move.x, y: move.y };
+  }
+
+  // Dodge roll
+  const DODGE_DURATION = 0.2;  // seconds of dash
+  const DODGE_SPEED = 450;     // pixels/sec during dodge
+  const DODGE_COOLDOWN = 1.5;
+  const DODGE_IFRAMES = 0.25;  // slightly longer than the dash
+
+  if (player.dodgeTimer > 0) {
+    // Currently dodging — move in dodge direction at high speed
+    player.dodgeTimer -= dt;
+    const dodgeX = player.position.x + player.dodgeDir.x * DODGE_SPEED * dt;
+    const dodgeY = player.position.y + player.dodgeDir.y * DODGE_SPEED * dt;
+    const dtX = worldToTile(dodgeX + (player.dodgeDir.x > 0 ? halfW : -halfW), player.position.y);
+    if (isTileWalkable(dungeon, dtX.x, dtX.y)) player.position.x = dodgeX;
+    const dtY = worldToTile(player.position.x, dodgeY + (player.dodgeDir.y > 0 ? halfH : -halfH));
+    if (isTileWalkable(dungeon, dtY.x, dtY.y)) player.position.y = dodgeY;
+  } else if (input.isKeyJustPressed('Space') && player.dodgeCooldown <= 0) {
+    // Start dodge — use movement direction or facing
+    const dodgeDir = (move.x !== 0 || move.y !== 0)
+      ? { x: move.x, y: move.y }
+      : { ...player.facing };
+    const len = Math.sqrt(dodgeDir.x * dodgeDir.x + dodgeDir.y * dodgeDir.y);
+    if (len > 0) {
+      player.dodgeDir = { x: dodgeDir.x / len, y: dodgeDir.y / len };
+      player.dodgeTimer = DODGE_DURATION;
+      player.dodgeCooldown = DODGE_COOLDOWN;
+      player.invincibleTimer = Math.max(player.invincibleTimer, DODGE_IFRAMES);
+    }
+  }
+
+  if (player.dodgeCooldown > 0) {
+    player.dodgeCooldown -= dt;
   }
 
   // Update cooldowns
