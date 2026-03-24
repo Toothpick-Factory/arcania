@@ -286,6 +286,9 @@ export function generateLobby(): DungeonMap {
   // Portal tile at the top center
   tiles[roomY + 1][roomX + roomW / 2] = { type: 'stairs', walkable: true, visible: true, explored: true };
 
+  // Campfire at center (using cooking_station tile type for the visual)
+  tiles[roomY + roomH / 2][roomX + roomW / 2] = { type: 'cooking_station', walkable: true, visible: true, explored: true };
+
   const lobbyRoom: Room = {
     x: roomX, y: roomY, width: roomW, height: roomH,
     type: 'spawn', enemyCount: 0, cleared: true, locked: false,

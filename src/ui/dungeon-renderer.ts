@@ -102,9 +102,9 @@ export function renderPlayer(renderer: Renderer, player: Player): void {
   if (player.shield > 0) {
     const shieldAlpha = Math.min(0.5, player.shield / 60);
     renderer.ctx.globalAlpha = shieldAlpha;
-    renderer.drawCircle(x, y, halfW + 6, '#4488cc');
+    renderer.drawCircle(x, y, halfW + 6, player.shieldColor);
     renderer.ctx.globalAlpha = 0.7;
-    renderer.drawCircle(x, y, halfW + 4, '#88bbff');
+    renderer.drawCircle(x, y, halfW + 4, player.shieldColor);
     renderer.ctx.globalAlpha = 1;
     // Shield HP text
     renderer.drawText(`${player.shield}`, x, y - halfH - 16, '#88ccff', 9, 'center');

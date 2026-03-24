@@ -202,7 +202,7 @@ function renderComboQueue(renderer: Renderer, player: Player): void {
     }
   }
 
-  const hint = player.comboQueue.length < 3
+  const hint = player.comboQueue.length < 2
     ? 'Press more keys or click to cast'
     : 'Click to execute combo!';
   renderer.drawText(hint, queueX, queueY + 34, player.comboQueue.length >= 2 ? '#ffff44' : '#888888', 10, 'center');

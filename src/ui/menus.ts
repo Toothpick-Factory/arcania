@@ -136,7 +136,7 @@ export function updateMenu(
       const idx = menu.gridCursorY * GRID_COLS + menu.gridCursorX;
       const cell = cells[idx];
       if (cell && cell.kind !== 'empty' && cell.ref) {
-        if (player.comboQueue.length < 3) {
+        if (player.comboQueue.length < 2) {
           player.comboQueue.push({ kind: cell.kind as 'spell' | 'item', ref: cell.ref });
           menu.message = `Added ${cell.name} to combo queue`;
           menu.messageTimer = 1.5;

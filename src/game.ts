@@ -52,6 +52,7 @@ export class Game {
   private notifications: { text: string; timer: number; color: string }[] = [];
   private autoSaveTimer = 0;
   private debugFog = false;
+  private killCount = 0;
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new Renderer(canvas);
@@ -69,9 +70,8 @@ export class Game {
       floorTimer: 0,
     };
 
-    // R13: Start in the lobby
+    // R13: Start in the lobby — no overlay menu, player walks around
     this.enterLobby();
-    this.menu.type = 'hub';
 
     this.loop = new GameLoop(
       (dt) => this.update(dt),
@@ -88,6 +88,7 @@ export class Game {
     this.state.floor = 1;
     this.state.scene = 'dungeon';
     this.state.gameTime = 0;
+    this.killCount = 0;
 
     // Apply meta progression
     const up = this.meta.permanentUpgrades;
@@ -129,6 +130,12 @@ export class Game {
         const bossDef = getBossForFloor(this.state.floor);
         if (bossDef) {
           const scaled = scaleEnemyForFloor(bossDef, this.state.floor);
+          // FB9: Theme boss after the spell it will drop
+          const available = ALL_MAGIC_TYPES.filter((mt) => !hasMagic(this.player, mt));
+          const bossElement = available.length > 0 ? randomChoice(available) : randomChoice(ALL_MAGIC_TYPES);
+          room.bossElement = bossElement;
+          scaled.color = MAGIC_TYPE_COLORS[bossElement];
+          scaled.name = `${MAGIC_TYPE_NAMES[bossElement]} ${scaled.name}`;
           const pos = getRoomCenterWorld(room);
           this.enemies.push(createEnemy(scaled, pos));
         }
@@ -225,6 +232,13 @@ export class Game {
         }
         this.addNotification('Debug: Fog of War OFF', '#ffff00');
       } else {
+        // Reset all tiles to unexplored — visibility will rebuild from player position
+        for (let y = 0; y < this.dungeon.height; y++) {
+          for (let x = 0; x < this.dungeon.width; x++) {
+            this.dungeon.tiles[y][x].visible = false;
+            this.dungeon.tiles[y][x].explored = false;
+          }
+        }
         this.addNotification('Debug: Fog of War ON', '#ffff00');
       }
     }
@@ -636,8 +650,8 @@ export class Game {
       default: notifText = 'Magic Shield'; break;
     }
 
-    addShield(this.player, shieldAmt, shieldDur);
-    this.player.spellCooldowns.set(buffId, 8); // 8s cooldown on self-buffs
+    addShield(this.player, shieldAmt, shieldDur, MAGIC_TYPE_COLORS[mt] || '#4488cc');
+    this.player.spellCooldowns.set(buffId, 8);
     this.addNotification(notifText, MAGIC_TYPE_COLORS[mt] || '#ffffff');
     addMagicXp(this.player, mt, 2);
   }
@@ -685,11 +699,16 @@ export class Game {
       this.addNotification(`+${count} ${item.name}`, item.color);
     }
 
-    // R6: Guarantee 2nd spell quickly — if player has only 1 spell, force a drop
+    this.killCount++;
+
+    // FB6: 2nd spell within first 10 kills (increasing chance, guaranteed at 10)
     if (!loot.magicUnlock && this.player.magics.length <= 1) {
-      const available = ALL_MAGIC_TYPES.filter((mt) => !hasMagic(this.player, mt));
-      if (available.length > 0) {
-        loot.magicUnlock = randomChoice(available);
+      const dropChance = this.killCount >= 10 ? 1.0 : (this.killCount >= 7 ? 0.5 : (this.killCount >= 4 ? 0.15 : 0));
+      if (Math.random() < dropChance) {
+        const available = ALL_MAGIC_TYPES.filter((mt) => !hasMagic(this.player, mt));
+        if (available.length > 0) {
+          loot.magicUnlock = randomChoice(available);
+        }
       }
     }
 
@@ -737,7 +756,7 @@ export class Game {
     this.meta.hotbarConfig = [...this.player.hotbar];
     saveMetaProgress(this.meta);
     this.enterLobby();
-    this.menu.type = 'hub';
+    this.menu.type = 'none';
     this.menu.selectedIndex = 0;
   }
 
@@ -778,6 +797,14 @@ export class Game {
       const pt = worldToTile(this.player.position.x, this.player.position.y);
       renderMinimap(this.renderer, this.dungeon, pt.x, pt.y);
       this.renderNotifications();
+    }
+
+    // Lobby overlay text
+    if (this.state.scene === 'lobby' && this.menu.type === 'none') {
+      this.renderer.drawText('ARCANIA', CANVAS_WIDTH / 2, 30, '#cc88ff', 36, 'center');
+      this.renderer.drawText('Walk to the portal to begin your run', CANVAS_WIDTH / 2, 70, '#888888', 12, 'center');
+      this.renderer.drawText(`Best Floor: ${this.meta.bestFloor}  |  Runs: ${this.meta.totalRuns}`, CANVAS_WIDTH / 2, 90, '#666666', 11, 'center');
+      this.renderer.drawText('[F] at portal to enter dungeon  |  [ESC] menu', CANVAS_WIDTH / 2, CANVAS_HEIGHT - 20, '#555555', 10, 'center');
     }
 
     renderMenu(this.renderer, this.menu, this.player, this.meta);

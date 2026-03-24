@@ -37,6 +37,7 @@ export interface Player {
   defense: number;
   shield: number;
   shieldTimer: number;
+  shieldColor: string;
   // Progression
   level: number;
   xp: number;
@@ -79,6 +80,7 @@ export function createPlayer(): Player {
     defense: 0,
     shield: 0,
     shieldTimer: 0,
+    shieldColor: '#4488cc',
     level: 1,
     xp: 0,
     xpToNext: 50,
@@ -147,8 +149,8 @@ export function updatePlayer(player: Player, input: InputManager, dungeon: Dunge
   }
 
   // Dodge roll
-  const DODGE_DURATION = 0.2;  // seconds of dash
-  const DODGE_SPEED = 450;     // pixels/sec during dodge
+  const DODGE_DURATION = 0.15;  // shorter dash
+  const DODGE_SPEED = 350;     // slower = shorter distance
   const DODGE_COOLDOWN = 1.5;
   const DODGE_IFRAMES = 0.25;  // slightly longer than the dash
 
@@ -220,7 +222,7 @@ export function updatePlayer(player: Player, input: InputManager, dungeon: Dunge
     if (input.isKeyJustPressed(`Digit${i + 1}`)) {
       const slot = player.hotbar[i];
       if (slot.kind !== 'empty' && slot.ref) {
-        if (player.comboQueue.length < 3) {
+        if (player.comboQueue.length < 2) {
           player.comboQueue.push({ kind: slot.kind as 'spell' | 'item', ref: slot.ref });
         }
       }
@@ -274,9 +276,10 @@ export function healPlayer(player: Player, amount: number): void {
   player.hp = Math.min(player.maxHp, player.hp + amount);
 }
 
-export function addShield(player: Player, amount: number, duration: number): void {
+export function addShield(player: Player, amount: number, duration: number, color?: string): void {
   player.shield = Math.max(player.shield, amount);
   player.shieldTimer = Math.max(player.shieldTimer, duration);
+  if (color) player.shieldColor = color;
 }
 
 export function addXp(player: Player, amount: number): boolean {
