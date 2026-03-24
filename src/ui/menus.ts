@@ -449,10 +449,10 @@ function renderCompendium(renderer: Renderer, player: Player): void {
 
   renderer.drawRect(panelX, panelY, panelW, panelH, '#1a1a2e');
   renderer.drawRectOutline(panelX, panelY, panelW, panelH, '#ffdd44');
-  renderer.drawText('SPELL COMPENDIUM', CANVAS_WIDTH / 2, panelY + 12, '#ffdd44', 20, 'center');
+  renderer.drawText('SPELL COMPENDIUM (This Run)', CANVAS_WIDTH / 2, panelY + 12, '#ffdd44', 20, 'center');
 
   const discovered = player.discoveredCombos;
-  renderer.drawText(`Discovered: ${discovered.length} / ${COMBO_SPELLS.length}`, CANVAS_WIDTH / 2, panelY + 38, '#aaaaaa', 12, 'center');
+  renderer.drawText(`Discovered this run: ${discovered.length}`, CANVAS_WIDTH / 2, panelY + 38, '#aaaaaa', 12, 'center');
 
   if (discovered.length === 0) {
     renderer.drawText('No combos discovered yet!', CANVAS_WIDTH / 2, panelY + 80, '#888888', 14, 'center');
@@ -477,8 +477,10 @@ function renderCompendium(renderer: Renderer, player: Player): void {
       // Combo name
       renderer.drawText(combo.name, panelX + 58, y, combo.color, 13);
 
-      // Formula
-      renderer.drawText(`${baseName} + ${modName}`, panelX + 280, y, '#888888', 10);
+      // Formula with tier
+      const baseMagic = player.magics.find((m) => m.magicType === combo.baseElement);
+      const baseTier = baseMagic ? getHighestUnlockedTier(baseMagic.xp) : 1;
+      renderer.drawText(`T${baseTier} ${baseName} + ${modName}`, panelX + 280, y, '#888888', 10);
 
       // Description
       renderer.drawText(combo.description, panelX + 58, y + 15, '#666666', 9);

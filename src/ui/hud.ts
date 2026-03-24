@@ -226,21 +226,34 @@ export function zoomMinimap(delta: number): void {
 }
 
 export function renderMinimap(renderer: Renderer, dungeon: DungeonMap, playerTileX: number, playerTileY: number): void {
-  const mapSize = Math.round(120 * minimapZoom);
+  const mapSize = 120; // fixed display size
+  // minimapZoom controls how much of the map we see (higher = more zoomed in)
   const mapX = CANVAS_WIDTH - mapSize - 10;
   const mapY = CANVAS_HEIGHT - mapSize - 10;
-  const scale = mapSize / Math.max(dungeon.width, dungeon.height);
+
+  // FB19: Zoom controls view scale, centered on player
+  const viewRadius = Math.round(Math.max(dungeon.width, dungeon.height) / (2 * minimapZoom));
+  const scale = mapSize / (viewRadius * 2);
 
   renderer.ctx.globalAlpha = 0.7;
   renderer.drawRect(mapX - 2, mapY - 2, mapSize + 4, mapSize + 4, '#111111');
   renderer.ctx.globalAlpha = 1;
 
-  for (let y = 0; y < dungeon.height; y++) {
-    for (let x = 0; x < dungeon.width; x++) {
+  // Clip to minimap bounds
+  renderer.ctx.save();
+  renderer.ctx.beginPath();
+  renderer.ctx.rect(mapX, mapY, mapSize, mapSize);
+  renderer.ctx.clip();
+
+  const offsetX = playerTileX - viewRadius;
+  const offsetY = playerTileY - viewRadius;
+
+  for (let y = Math.max(0, offsetY); y < Math.min(dungeon.height, offsetY + viewRadius * 2); y++) {
+    for (let x = Math.max(0, offsetX); x < Math.min(dungeon.width, offsetX + viewRadius * 2); x++) {
       const tile = dungeon.tiles[y][x];
       if (!tile.explored) continue;
-      const px = mapX + x * scale;
-      const py = mapY + y * scale;
+      const px = mapX + (x - offsetX) * scale;
+      const py = mapY + (y - offsetY) * scale;
       let color = '#000000';
       if (tile.type === 'floor') color = tile.visible ? '#334433' : '#222222';
       else if (tile.type === 'wall') color = tile.visible ? '#666655' : '#333322';
@@ -252,5 +265,11 @@ export function renderMinimap(renderer: Renderer, dungeon: DungeonMap, playerTil
       }
     }
   }
-  renderer.drawRect(mapX + playerTileX * scale - 1, mapY + playerTileY * scale - 1, 3, 3, '#44ff44');
+
+  // Player dot always at center
+  const playerPx = mapX + (playerTileX - offsetX) * scale;
+  const playerPy = mapY + (playerTileY - offsetY) * scale;
+  renderer.drawRect(playerPx - 1, playerPy - 1, 3, 3, '#44ff44');
+
+  renderer.ctx.restore();
 }
