@@ -1,5 +1,5 @@
 import { Renderer } from '../engine/renderer';
-import { DungeonMap } from '../systems/dungeon';
+import { DungeonMap, worldToTile } from '../systems/dungeon';
 import { TILE_SIZE } from '../engine/types';
 import { Player } from '../entities/player';
 import { Enemy, EnemyProjectile } from '../entities/enemy';
@@ -87,9 +87,18 @@ export function renderPlayer(renderer: Renderer, player: Player): void {
   renderer.drawCircle(fx, fy, 3, '#cc88ff');
 }
 
-export function renderEnemies(renderer: Renderer, enemies: Enemy[]): void {
+export function renderEnemies(renderer: Renderer, enemies: Enemy[], dungeon: DungeonMap, debugFog: boolean): void {
   for (const enemy of enemies) {
     if (!enemy.active) continue;
+
+    // Hide enemies in fog of war (unless debug fog is on)
+    if (!debugFog) {
+      const tile = worldToTile(enemy.position.x, enemy.position.y);
+      if (tile.y >= 0 && tile.y < dungeon.height && tile.x >= 0 && tile.x < dungeon.width) {
+        if (!dungeon.tiles[tile.y][tile.x].visible) continue;
+      }
+    }
+
     const { x, y } = enemy.position;
     const size = enemy.def.size;
 

@@ -51,6 +51,7 @@ export class Game {
   private currentShop: Shop | null = null;
   private notifications: { text: string; timer: number; color: string }[] = [];
   private autoSaveTimer = 0;
+  private debugFog = false;
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new Renderer(canvas);
@@ -171,6 +172,23 @@ export class Game {
 
     const playerTile = worldToTile(this.player.position.x, this.player.position.y);
     updateVisibility(this.dungeon, playerTile.x, playerTile.y);
+
+    // M key toggles fog of war debug mode
+    if (this.input.isKeyJustPressed('KeyM')) {
+      this.debugFog = !this.debugFog;
+      if (this.debugFog) {
+        // Reveal entire map
+        for (let y = 0; y < this.dungeon.height; y++) {
+          for (let x = 0; x < this.dungeon.width; x++) {
+            this.dungeon.tiles[y][x].visible = true;
+            this.dungeon.tiles[y][x].explored = true;
+          }
+        }
+        this.addNotification('Debug: Fog of War OFF', '#ffff00');
+      } else {
+        this.addNotification('Debug: Fog of War ON', '#ffff00');
+      }
+    }
 
     // Spell casting — click fires whatever is queued
     if (this.input.isMouseJustClicked()) {
@@ -575,7 +593,7 @@ export class Game {
       this.renderer.beginCamera();
       renderDungeon(this.renderer, this.dungeon);
       renderAoeEffects(this.renderer, this.aoeEffects);
-      renderEnemies(this.renderer, this.enemies);
+      renderEnemies(this.renderer, this.enemies, this.dungeon, this.debugFog);
       renderPlayer(this.renderer, this.player);
       renderProjectiles(this.renderer, this.projectiles);
       renderEnemyProjectiles(this.renderer, this.enemyProjectiles);

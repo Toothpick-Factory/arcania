@@ -1,6 +1,6 @@
 import { Vec2, TILE_SIZE } from '../engine/types';
 import { EnemyDef } from '../data/enemies';
-import { DungeonMap, isTileWalkable, worldToTile } from '../systems/dungeon';
+import { DungeonMap, isTileWalkable, worldToTile, hasLineOfSight } from '../systems/dungeon';
 import { vec2Sub, vec2Normalize, vec2Len, vec2Scale, generateId } from '../utils/math';
 
 export interface Enemy {
@@ -11,6 +11,8 @@ export interface Enemy {
   maxHp: number;
   attackTimer: number;
   active: boolean;
+  aware: boolean;        // true if enemy can see the player
+  alertTimer: number;    // how long enemy stays aware after losing sight
   stunTimer: number;
   knockbackVel: Vec2;
   // For ranged enemies
@@ -36,6 +38,8 @@ export function createEnemy(def: EnemyDef, position: Vec2): Enemy {
     maxHp: def.hp,
     attackTimer: 0,
     active: true,
+    aware: false,
+    alertTimer: 0,
     stunTimer: 0,
     knockbackVel: { x: 0, y: 0 },
     shootTimer: def.attackCooldown,
@@ -50,6 +54,21 @@ export function updateEnemy(
   enemies: Enemy[]
 ): EnemyProjectile | null {
   if (!enemy.active) return null;
+
+  // Line-of-sight awareness — enemy must see the player to engage
+  const canSeePlayer = hasLineOfSight(dungeon, enemy.position, playerPos);
+  if (canSeePlayer) {
+    enemy.aware = true;
+    enemy.alertTimer = 3; // stay aware for 3s after losing sight
+  } else if (enemy.aware) {
+    enemy.alertTimer -= dt;
+    if (enemy.alertTimer <= 0) {
+      enemy.aware = false;
+    }
+  }
+
+  // If not aware, don't chase or attack
+  if (!enemy.aware) return null;
 
   // Update stun
   if (enemy.stunTimer > 0) {
