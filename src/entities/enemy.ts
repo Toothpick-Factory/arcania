@@ -180,21 +180,45 @@ function moveEnemy(
   speedMult: number = 1
 ): void {
   const speed = enemy.def.speed * speedMult;
+  const halfSize = enemy.def.size / 2;
+
+  // Try direct movement first
   const newX = enemy.position.x + dir.x * speed * dt;
   const newY = enemy.position.y + dir.y * speed * dt;
 
-  const halfSize = enemy.def.size / 2;
+  const canMoveX = isTileWalkable(dungeon,
+    worldToTile(newX + (dir.x > 0 ? halfSize : -halfSize), enemy.position.y).x,
+    worldToTile(newX + (dir.x > 0 ? halfSize : -halfSize), enemy.position.y).y
+  );
+  const canMoveY = isTileWalkable(dungeon,
+    worldToTile(enemy.position.x, newY + (dir.y > 0 ? halfSize : -halfSize)).x,
+    worldToTile(enemy.position.x, newY + (dir.y > 0 ? halfSize : -halfSize)).y
+  );
 
-  // Tile collision for X
-  const tileCheck = worldToTile(newX + (dir.x > 0 ? halfSize : -halfSize), enemy.position.y);
-  if (isTileWalkable(dungeon, tileCheck.x, tileCheck.y)) {
-    enemy.position.x = newX;
-  }
+  if (canMoveX) enemy.position.x = newX;
+  if (canMoveY) enemy.position.y = newY;
 
-  // Tile collision for Y
-  const tileCheckY = worldToTile(enemy.position.x, newY + (dir.y > 0 ? halfSize : -halfSize));
-  if (isTileWalkable(dungeon, tileCheckY.x, tileCheckY.y)) {
-    enemy.position.y = newY;
+  // Wall-sliding: if blocked in both directions, try perpendicular movement
+  if (!canMoveX && !canMoveY) {
+    // Try sliding along walls — pick the perpendicular direction
+    const slideX = enemy.position.x + (dir.y > 0 ? 1 : -1) * speed * dt * 0.5;
+    const slideY = enemy.position.y + (dir.x > 0 ? 1 : -1) * speed * dt * 0.5;
+    const canSlideX = isTileWalkable(dungeon,
+      worldToTile(slideX + halfSize, enemy.position.y).x,
+      worldToTile(slideX + halfSize, enemy.position.y).y
+    ) && isTileWalkable(dungeon,
+      worldToTile(slideX - halfSize, enemy.position.y).x,
+      worldToTile(slideX - halfSize, enemy.position.y).y
+    );
+    const canSlideY = isTileWalkable(dungeon,
+      worldToTile(enemy.position.x, slideY + halfSize).x,
+      worldToTile(enemy.position.x, slideY + halfSize).y
+    ) && isTileWalkable(dungeon,
+      worldToTile(enemy.position.x, slideY - halfSize).x,
+      worldToTile(enemy.position.x, slideY - halfSize).y
+    );
+    if (canSlideX) enemy.position.x = slideX;
+    else if (canSlideY) enemy.position.y = slideY;
   }
 
   // Simple separation from other enemies
