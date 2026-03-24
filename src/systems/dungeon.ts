@@ -9,6 +9,8 @@ export interface Room {
   type: 'normal' | 'spawn' | 'boss' | 'miniboss' | 'shop' | 'cooking' | 'treasure';
   enemyCount: number;
   cleared: boolean;
+  locked: boolean;       // R3: player locked in until room is cleared
+  bossElement?: string;  // R3: element theme for boss rooms
 }
 
 export interface DungeonMap {
@@ -56,6 +58,7 @@ export function generateDungeon(floor: number): DungeonMap {
       type: 'normal',
       enemyCount: 0,
       cleared: false,
+      locked: false,
     };
 
     // Check overlap with existing rooms (with padding)
@@ -100,6 +103,34 @@ export function generateDungeon(floor: number): DungeonMap {
   rooms[0].cleared = true;
   rooms[rooms.length - 1].type = 'boss';
 
+  // R3: Make boss room larger (expand to at least 12x12)
+  const bossRoom = rooms[rooms.length - 1];
+  const minBossSize = 12;
+  if (bossRoom.width < minBossSize) {
+    const expand = minBossSize - bossRoom.width;
+    bossRoom.width = minBossSize;
+    // Re-carve the expanded area
+    for (let ry = bossRoom.y; ry < bossRoom.y + bossRoom.height; ry++) {
+      for (let rx = bossRoom.x; rx < bossRoom.x + expand + bossRoom.width; rx++) {
+        if (ry >= 0 && ry < height && rx >= 0 && rx < width) {
+          tiles[ry][rx] = { type: 'floor', walkable: true, visible: false, explored: false };
+        }
+      }
+    }
+  }
+  if (bossRoom.height < minBossSize) {
+    const expand = minBossSize - bossRoom.height;
+    bossRoom.height = minBossSize;
+    for (let ry = bossRoom.y; ry < bossRoom.y + bossRoom.height + expand; ry++) {
+      for (let rx = bossRoom.x; rx < bossRoom.x + bossRoom.width; rx++) {
+        if (ry >= 0 && ry < height && rx >= 0 && rx < width) {
+          tiles[ry][rx] = { type: 'floor', walkable: true, visible: false, explored: false };
+        }
+      }
+    }
+  }
+  bossRoom.locked = false; // unlocked until player enters
+
   // Place special rooms
   const midRooms = shuffleArray(rooms.slice(1, -1));
   if (midRooms.length > 0) midRooms[0].type = 'shop';
@@ -123,8 +154,8 @@ export function generateDungeon(floor: number): DungeonMap {
   }
 
   // Place special tiles
-  const bossRoom = rooms[rooms.length - 1];
-  const bossCenter = getRoomCenter(bossRoom);
+  const bossRm = rooms[rooms.length - 1];
+  const bossCenter = getRoomCenter(bossRm);
   tiles[bossCenter.y][bossCenter.x] = { type: 'stairs', walkable: true, visible: false, explored: false };
 
   for (const room of rooms) {

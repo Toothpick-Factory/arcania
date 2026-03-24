@@ -186,6 +186,13 @@ export class Game {
     const playerTile = worldToTile(this.player.position.x, this.player.position.y);
     updateVisibility(this.dungeon, playerTile.x, playerTile.y);
 
+    // R3: Lock boss/miniboss rooms when player enters
+    const playerRoom = findRoomAt(this.dungeon, playerTile.x, playerTile.y);
+    if (playerRoom && (playerRoom.type === 'boss' || playerRoom.type === 'miniboss') && !playerRoom.locked && !playerRoom.cleared) {
+      playerRoom.locked = true;
+      this.addNotification('The room seals behind you!', '#ff4444');
+    }
+
     // M key toggles fog of war debug mode
     if (this.input.isKeyJustPressed('KeyM')) {
       this.debugFog = !this.debugFog;
@@ -649,7 +656,13 @@ export class Game {
         const et = worldToTile(e.position.x, e.position.y);
         return findRoomAt(this.dungeon, et.x, et.y) === room;
       });
-      if (roomEnemies.every((e) => !e.active)) room.cleared = true;
+      if (roomEnemies.every((e) => !e.active)) {
+        room.cleared = true;
+        if (room.locked) {
+          room.locked = false;
+          this.addNotification('Room unsealed!', '#44ff44');
+        }
+      }
     }
   }
 
