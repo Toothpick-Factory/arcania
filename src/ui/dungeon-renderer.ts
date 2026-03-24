@@ -98,6 +98,18 @@ export function renderPlayer(renderer: Renderer, player: Player): void {
     renderer.drawRect(x - 4, y - halfH - 12, 8, 6, '#4422aa');
   }
 
+  // R15: Visible shield on character
+  if (player.shield > 0) {
+    const shieldAlpha = Math.min(0.5, player.shield / 60);
+    renderer.ctx.globalAlpha = shieldAlpha;
+    renderer.drawCircle(x, y, halfW + 6, '#4488cc');
+    renderer.ctx.globalAlpha = 0.7;
+    renderer.drawCircle(x, y, halfW + 4, '#88bbff');
+    renderer.ctx.globalAlpha = 1;
+    // Shield HP text
+    renderer.drawText(`${player.shield}`, x, y - halfH - 16, '#88ccff', 9, 'center');
+  }
+
   // Facing direction indicator (staff/wand)
   const fx = x + player.facing.x * 14;
   const fy = y + player.facing.y * 14;

@@ -218,8 +218,10 @@ export class Game {
       zoomMinimap(-0.25);
     }
 
-    // Spell casting — click fires whatever is queued
-    if (this.input.isMouseJustClicked()) {
+    // R14: Shift+Click casts self-buff based on spell combo
+    if (this.input.isMouseJustClicked() && (this.input.isKeyDown('ShiftLeft') || this.input.isKeyDown('ShiftRight'))) {
+      this.handleSelfBuff();
+    } else if (this.input.isMouseJustClicked()) {
       this.handleSpellCast();
     }
 
@@ -578,6 +580,47 @@ export class Game {
         createAoeEffect(spellDef, pos, this.player.baseDamage + getPlayerDamageBonus(this.player), 1)
       );
     }
+  }
+
+  private handleSelfBuff(): void {
+    // R14: Cast a self-buff based on the active spell element
+    const slot = this.player.hotbar[this.player.activeHotbarIndex];
+    if (!slot || slot.kind !== 'spell' || !slot.ref) return;
+
+    const magic = this.player.magics.find((m) => m.magicType === slot.ref);
+    if (!magic) return;
+
+    const spellDef = getActiveSpellForMagic(slot.ref as MagicType, magic.xp);
+    if (!spellDef) return;
+
+    const buffId = `selfbuff_${slot.ref}`;
+    if (this.player.spellCooldowns.has(buffId)) return;
+
+    // R15: Different buff per element — also creates visible shield
+    const mt = slot.ref as MagicType;
+    let shieldAmt = 20 + this.player.level * 2;
+    let shieldDur = 5;
+    let notifText = '';
+
+    switch (mt) {
+      case 'fire': notifText = 'Fire Shield — damage reflection'; shieldAmt += 10; break;
+      case 'ice': notifText = 'Frost Barrier — slows attackers'; shieldAmt += 15; shieldDur = 6; break;
+      case 'earth': notifText = 'Stone Armor — heavy defense'; shieldAmt += 30; shieldDur = 8; break;
+      case 'crystal': notifText = 'Crystal Ward — reflects projectiles'; shieldAmt += 20; break;
+      case 'light': notifText = 'Holy Shield — regeneration'; healPlayer(this.player, 15); shieldAmt += 10; break;
+      case 'blood': notifText = 'Blood Armor — lifesteal boost'; shieldAmt += 15; break;
+      case 'necrotic': notifText = 'Bone Shield — absorbs hits'; shieldAmt += 25; break;
+      case 'lightning': notifText = 'Static Field — stuns melee'; shieldAmt += 10; shieldDur = 4; break;
+      case 'lunar': notifText = 'Moon Cloak — evasion'; shieldAmt += 15; shieldDur = 6; break;
+      case 'poison': notifText = 'Toxic Shroud — poisons attackers'; shieldAmt += 10; break;
+      case 'minion': notifText = 'Minion Guard — summon defends'; shieldAmt += 15; break;
+      default: notifText = 'Magic Shield'; break;
+    }
+
+    addShield(this.player, shieldAmt, shieldDur);
+    this.player.spellCooldowns.set(buffId, 8); // 8s cooldown on self-buffs
+    this.addNotification(notifText, MAGIC_TYPE_COLORS[mt] || '#ffffff');
+    addMagicXp(this.player, mt, 2);
   }
 
   private handleInteraction(): void {
