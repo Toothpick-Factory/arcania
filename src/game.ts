@@ -195,6 +195,31 @@ export class Game {
     const action = updateMenu(this.menu, this.input, this.player, this.meta);
     if (action === 'restart') { this.endRun(); return; }
     if (action === 'start_run') { this.startNewRun(); return; }
+    if (action === 'boss_reward_spell') {
+      // Learn or upgrade the boss's element
+      const element = (this as any)._pendingBossElement as MagicType;
+      if (element) {
+        if (!hasMagic(this.player, element)) {
+          unlockMagic(this.player, element);
+          this.addNotification(`Learned ${MAGIC_TYPE_NAMES[element]}!`, MAGIC_TYPE_COLORS[element]);
+          const emptySlot = this.player.hotbar.findIndex((s) => s.kind === 'empty');
+          if (emptySlot >= 0) this.player.hotbar[emptySlot] = { kind: 'spell', ref: element };
+        } else {
+          addMagicXp(this.player, element, 50);
+          this.addNotification(`${MAGIC_TYPE_NAMES[element]} upgraded!`, MAGIC_TYPE_COLORS[element]);
+        }
+      }
+      this.menu.type = 'none';
+      return;
+    }
+    if (action === 'boss_reward_secondary') {
+      const type = this.menu.bossRewardSecondaryType;
+      if (type === 'armor') { this.player.maxHp += 25; this.player.hp += 25; this.addNotification('+25 Max HP!', '#44ff44'); }
+      else if (type === 'passive') { this.player.baseDamage += 5; this.addNotification('+5 Base Damage!', '#ff8844'); }
+      else if (type === 'currency') { this.player.gold += 50; this.addNotification('+50 Gold!', '#ffdd44'); }
+      this.menu.type = 'none';
+      return;
+    }
 
     if (this.menu.type !== 'none') { this.input.endFrame(); return; }
     // Allow movement in lobby too
@@ -823,14 +848,37 @@ export class Game {
       }
     }
 
-    if (loot.magicUnlock) {
+    // CSV1: Boss kill reward screen
+    if (enemy.def.behavior === 'boss' || (enemy.def.name && enemy.def.name.startsWith('Elite'))) {
+      const bossElement = loot.magicUnlock || randomChoice(ALL_MAGIC_TYPES);
+      const hasElement = hasMagic(this.player, bossElement);
+      const spellLabel = hasElement
+        ? `Upgrade ${MAGIC_TYPE_NAMES[bossElement]} magic`
+        : `Learn ${MAGIC_TYPE_NAMES[bossElement]} magic`;
+
+      const secondaryOptions = [
+        { label: '+25 Max HP (Armor)', type: 'armor' as const },
+        { label: '+5 Base Damage (Passive)', type: 'passive' as const },
+        { label: '+50 Gold (Currency)', type: 'currency' as const },
+      ];
+      const secondary = randomChoice(secondaryOptions);
+
+      this.menu.type = 'boss_reward';
+      this.menu.selectedIndex = 0;
+      this.menu.bossRewardSpell = spellLabel;
+      this.menu.bossRewardSecondary = secondary.label;
+      this.menu.bossRewardSecondaryType = secondary.type;
+
+      // Store the element for when player picks
+      (this as any)._pendingBossElement = bossElement;
+    } else if (loot.magicUnlock) {
+      // Regular enemy spell drops (non-boss)
       unlockMagic(this.player, loot.magicUnlock);
       if (!this.meta.unlockedMagics.includes(loot.magicUnlock)) {
         this.meta.unlockedMagics.push(loot.magicUnlock);
       }
       const name = MAGIC_TYPE_NAMES[loot.magicUnlock];
       this.addNotification(`New magic unlocked: ${name}!`, MAGIC_TYPE_COLORS[loot.magicUnlock]);
-      // Auto-assign to first empty hotbar slot
       const emptySlot = this.player.hotbar.findIndex((s) => s.kind === 'empty');
       if (emptySlot >= 0) {
         this.player.hotbar[emptySlot] = { kind: 'spell', ref: loot.magicUnlock };

@@ -8,7 +8,7 @@ import { getItemDef, getFoodEffect, HOTBAR_SIZE } from '../data/items';
 import { eatFood } from '../systems/cooking';
 import { MagicType, MAGIC_TYPE_COLORS, MAGIC_TYPE_NAMES, getActiveSpellForMagic, getHighestUnlockedTier, COMBO_SPELLS, getSpellById } from '../data/spells';
 
-export type MenuType = 'none' | 'inventory' | 'shop' | 'pause' | 'controls' | 'compendium' | 'death' | 'victory' | 'hub';
+export type MenuType = 'none' | 'inventory' | 'shop' | 'pause' | 'controls' | 'compendium' | 'boss_reward' | 'death' | 'victory' | 'hub';
 
 export interface GridCell {
   kind: 'spell' | 'item' | 'empty';
@@ -26,6 +26,10 @@ export interface MenuState {
   shop?: Shop;
   message?: string;
   messageTimer?: number;
+  // Boss reward
+  bossRewardSpell?: string;       // the element the boss drops
+  bossRewardSecondary?: string;   // random secondary reward description
+  bossRewardSecondaryType?: 'armor' | 'passive' | 'currency';
 }
 
 export function createMenuState(): MenuState {
@@ -244,6 +248,10 @@ function handleMenuAction(menu: MenuState, player: Player, meta: MetaSave): stri
       menu.type = 'pause';
       menu.selectedIndex = 0;
       return null;
+    case 'boss_reward':
+      if (menu.selectedIndex === 0) return 'boss_reward_spell';
+      if (menu.selectedIndex === 1) return 'boss_reward_secondary';
+      return null;
     case 'hub':
       if (menu.selectedIndex === 0) return 'start_run';
       return null;
@@ -266,6 +274,7 @@ export function renderMenu(renderer: Renderer, menu: MenuState, player: Player, 
     case 'pause': renderPause(renderer, menu); break;
     case 'controls': renderControls(renderer); break;
     case 'compendium': renderCompendium(renderer, player); break;
+    case 'boss_reward': renderBossReward(renderer, menu); break;
     case 'death': renderDeath(renderer, player, meta); break;
     case 'victory': renderVictory(renderer, player, meta); break;
     case 'hub': renderHub(renderer, menu, player, meta); break;
@@ -470,6 +479,39 @@ function renderShop(renderer: Renderer, menu: MenuState, player: Player): void {
   renderer.drawText('[Enter] Buy  [ESC] Close', CANVAS_WIDTH / 2, panelY + 380, '#666666', 11, 'center');
 }
 
+
+function renderBossReward(renderer: Renderer, menu: MenuState): void {
+  const panelX = CANVAS_WIDTH / 2 - 200;
+  const panelY = CANVAS_HEIGHT / 2 - 120;
+  const panelW = 400;
+  const panelH = 240;
+
+  renderer.drawRect(panelX, panelY, panelW, panelH, '#1a1a2e');
+  renderer.drawRectOutline(panelX, panelY, panelW, panelH, '#ffdd44');
+  renderer.drawText('BOSS DEFEATED!', CANVAS_WIDTH / 2, panelY + 15, '#ffdd44', 24, 'center');
+  renderer.drawText('Choose your reward:', CANVAS_WIDTH / 2, panelY + 45, '#aaaaaa', 14, 'center');
+
+  const options = [
+    { label: menu.bossRewardSpell || 'Learn New Spell', color: '#cc88ff' },
+    { label: menu.bossRewardSecondary || 'Random Reward', color: '#44ff44' },
+  ];
+
+  for (let i = 0; i < options.length; i++) {
+    const y = panelY + 80 + i * 55;
+    const isSelected = i === menu.selectedIndex;
+
+    renderer.drawRect(panelX + 20, y, panelW - 40, 45, isSelected ? '#333355' : '#222233');
+    renderer.drawRectOutline(panelX + 20, y, panelW - 40, 45, isSelected ? '#ffffff' : '#555555', isSelected ? 2 : 1);
+
+    renderer.drawText(
+      `${isSelected ? '> ' : '  '}${options[i].label}`,
+      CANVAS_WIDTH / 2, y + 14,
+      isSelected ? '#ffffff' : '#888888', 16, 'center'
+    );
+  }
+
+  renderer.drawText('[Enter] or Click to choose', CANVAS_WIDTH / 2, panelY + panelH - 20, '#555555', 11, 'center');
+}
 
 function renderCompendium(renderer: Renderer, player: Player): void {
   const panelX = CANVAS_WIDTH / 2 - 240;
