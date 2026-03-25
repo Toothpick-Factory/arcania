@@ -3,6 +3,7 @@ import { DungeonMap, worldToTile } from '../systems/dungeon';
 import { TILE_SIZE } from '../engine/types';
 import { Player } from '../entities/player';
 import { Enemy, EnemyProjectile } from '../entities/enemy';
+import { Minion } from '../entities/minion';
 import { Projectile, AoeEffect } from '../entities/projectile';
 
 const TILE_COLORS: Record<string, [string, string]> = {
@@ -55,6 +56,45 @@ export function renderDungeon(renderer: Renderer, dungeon: DungeonMap): void {
       }
 
       renderer.ctx.globalAlpha = 1;
+    }
+  }
+}
+
+export function renderMinions(renderer: Renderer, minions: Minion[]): void {
+  for (const minion of minions) {
+    const { x, y } = minion.position;
+    const size = minion.size;
+
+    // Shadow
+    renderer.ctx.globalAlpha = 0.3;
+    renderer.drawCircle(x, y + size / 2 + 1, size * 0.4, '#000000');
+    renderer.ctx.globalAlpha = 1;
+
+    // Body — slightly transparent to distinguish from enemies
+    renderer.ctx.globalAlpha = 0.85;
+    renderer.drawCircle(x, y, size / 2, minion.color);
+
+    // Friendly indicator — green outline
+    renderer.ctx.strokeStyle = '#44ff44';
+    renderer.ctx.lineWidth = 1.5;
+    renderer.ctx.beginPath();
+    renderer.ctx.arc(x, y, size / 2 + 2, 0, Math.PI * 2);
+    renderer.ctx.stroke();
+    renderer.ctx.globalAlpha = 1;
+
+    // HP bar if damaged
+    if (minion.hp < minion.maxHp) {
+      const barW = size * 1.5;
+      renderer.drawBar(x - barW / 2, y - size / 2 - 6, barW, 3, minion.hp / minion.maxHp, '#44cc44', '#224422');
+    }
+
+    // Lifetime indicator (flicker when about to expire)
+    if (minion.lifetime < 3) {
+      if (Math.floor(minion.lifetime * 4) % 2 === 0) {
+        renderer.ctx.globalAlpha = 0.3;
+        renderer.drawCircle(x, y, size / 2, '#ffffff');
+        renderer.ctx.globalAlpha = 1;
+      }
     }
   }
 }

@@ -10,6 +10,7 @@ import {
 import {
   Enemy, EnemyProjectile, createEnemy, updateEnemy, damageEnemy
 } from './entities/enemy';
+import { Minion, createMinion, updateMinion } from './entities/minion';
 import {
   Projectile, AoeEffect, createProjectile, updateProjectile,
   createAoeEffect, updateAoeEffect
@@ -32,7 +33,7 @@ import { renderHUD, renderMinimap, zoomMinimap } from './ui/hud';
 import {
   renderDungeon, renderPlayer, renderEnemies, renderProjectiles,
   renderEnemyProjectiles, renderAoeEffects, renderInteractionPrompt,
-  renderLockedRoomBarriers
+  renderLockedRoomBarriers, renderMinions
 } from './ui/dungeon-renderer';
 import { vec2Sub, vec2Normalize, vec2Dist, vec2Len, randomChoice, randomInt } from './utils/math';
 
@@ -44,6 +45,7 @@ export class Game {
   private player: Player;
   private dungeon!: DungeonMap;
   private enemies: Enemy[] = [];
+  private minions: Minion[] = [];
   private projectiles: Projectile[] = [];
   private enemyProjectiles: EnemyProjectile[] = [];
   private aoeEffects: AoeEffect[] = [];
@@ -116,6 +118,7 @@ export class Game {
   private generateFloor(): void {
     this.dungeon = generateDungeon(this.state.floor);
     this.enemies = [];
+    this.minions = [];
     this.projectiles = [];
     this.enemyProjectiles = [];
     this.aoeEffects = [];
@@ -328,6 +331,21 @@ export class Game {
       enemy.attackTimer -= dt;
     }
 
+    // Update minions — they follow player and attack enemies
+    for (let i = this.minions.length - 1; i >= 0; i--) {
+      const dead = updateMinion(this.minions[i], this.player.position, this.enemies, this.dungeon, dt);
+      if (dead) {
+        this.minions.splice(i, 1);
+      }
+    }
+    // Check for enemies killed by minions
+    for (const enemy of this.enemies) {
+      if (!enemy.active && enemy.hp <= 0 && !(enemy as any)._deathHandled) {
+        (enemy as any)._deathHandled = true;
+        this.handleEnemyKill(enemy);
+      }
+    }
+
     // Update player projectiles
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const proj = this.projectiles[i];
@@ -342,7 +360,7 @@ export class Game {
           const killed = damageEnemy(enemy, proj.damage, knockDir);
           proj.hitEnemies.add(enemy.id);
 
-          if (killed) this.handleEnemyKill(enemy);
+          if (killed) { (enemy as any)._deathHandled = true; this.handleEnemyKill(enemy); }
 
           // Magic XP on hit
           const activeSlot = this.player.hotbar[this.player.activeHotbarIndex];
@@ -415,7 +433,7 @@ export class Game {
         if (dist < aoe.radius) {
           const killed = damageEnemy(enemy, aoe.damage);
           aoe.hitEnemies.add(enemy.id);
-          if (killed) this.handleEnemyKill(enemy);
+          if (killed) { (enemy as any)._deathHandled = true; this.handleEnemyKill(enemy); }
         }
       }
 
@@ -664,17 +682,30 @@ export class Game {
     const clampedDir = vec2Normalize(vec2Sub(targetWorld, this.player.position));
     const finalDir = vec2Len(clampedDir) > 0 ? clampedDir : dir;
 
-    // Cast
-    if (spellDef.projectileSpeed > 0) {
+    // Cast based on behavior
+    if (spellDef.behavior === 'summon' && spellDef.minionCount) {
+      // Summon minions near the player
+      const newMinions = createMinion(
+        this.player.position,
+        spellDef.baseDamage + this.player.baseDamage,
+        spellDef.minionDuration || 15,
+        spellDef.color,
+        spellDef.minionCount
+      );
+      this.minions.push(...newMinions);
+      this.addNotification(`Summoned ${spellDef.name}!`, spellDef.color);
+    } else if (spellDef.projectileSpeed > 0) {
       this.projectiles.push(
         createProjectile(spellDef, this.player.position, finalDir, this.player.baseDamage + getPlayerDamageBonus(this.player), 1)
       );
     } else if (spellDef.aoeRadius > 0) {
-      // AoE targets the clamped position (can't place through walls)
       const pos = spellDef.range > 0 ? targetWorld : this.player.position;
       this.aoeEffects.push(
         createAoeEffect(spellDef, pos, this.player.baseDamage + getPlayerDamageBonus(this.player), 1)
       );
+    } else if (spellDef.behavior === 'self') {
+      // Self-cast spells (shields, buffs) — already handled by shieldAmount/healAmount above
+      this.addNotification(`Cast ${spellDef.name}!`, spellDef.color);
     }
   }
 
@@ -827,6 +858,7 @@ export class Game {
     this.state.scene = 'lobby';
     this.dungeon = generateLobby();
     this.enemies = [];
+    this.minions = [];
     this.projectiles = [];
     this.enemyProjectiles = [];
     this.aoeEffects = [];
@@ -851,6 +883,7 @@ export class Game {
       if (this.state.scene !== 'lobby') {
         renderEnemies(this.renderer, this.enemies, this.dungeon, this.debugFog);
       }
+      renderMinions(this.renderer, this.minions);
       renderPlayer(this.renderer, this.player);
       renderProjectiles(this.renderer, this.projectiles);
       renderEnemyProjectiles(this.renderer, this.enemyProjectiles);
