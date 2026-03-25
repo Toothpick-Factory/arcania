@@ -248,6 +248,24 @@ export function updatePlayer(player: Player, input: InputManager, dungeon: Dunge
     }
   }
 
+  // CSV9: Shift+number cycles tier for that hotbar spell
+  if (input.isKeyDown('ShiftLeft') || input.isKeyDown('ShiftRight')) {
+    for (let i = 0; i < HOTBAR_SIZE; i++) {
+      if (input.isKeyJustPressed(`Digit${i + 1}`)) {
+        const slot = player.hotbar[i];
+        if (slot.kind === 'spell' && slot.ref) {
+          const magic = player.magics.find((m) => m.magicType === slot.ref);
+          if (magic) {
+            const maxTier = getHighestUnlockedTier(magic.xp);
+            const currentTier = magic.selectedTier || maxTier;
+            // Cycle: current -> current+1, wrap at max back to 1
+            magic.selectedTier = (currentTier >= maxTier ? 1 : currentTier + 1) as SpellTier;
+          }
+        }
+      }
+    }
+  }
+
   // Q clears the combo queue
   if (input.isKeyJustPressed('KeyQ')) {
     player.comboQueue = [];

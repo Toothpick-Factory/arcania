@@ -134,19 +134,32 @@ export function updateMenu(
       return null;
     }
 
-    // R12: Right-click food to queue it for spell casting
+    // CSV8: Right-click context menu — Eat, Inspect, Drop, or queue for combo
     if (input.isRightMouseJustClicked()) {
       const cells = buildInventoryGrid(player);
       const idx = menu.gridCursorY * GRID_COLS + menu.gridCursorX;
       const cell = cells[idx];
       if (cell && cell.kind !== 'empty' && cell.ref) {
-        if (player.comboQueue.length < 2) {
-          player.comboQueue.push({ kind: cell.kind as 'spell' | 'item', ref: cell.ref });
-          menu.message = `Added ${cell.name} to combo queue`;
-          menu.messageTimer = 1.5;
-        } else {
-          menu.message = 'Combo queue full!';
-          menu.messageTimer = 1.5;
+        if (cell.kind === 'item') {
+          const def = getItemDef(cell.ref);
+          const effect = getFoodEffect(cell.ref);
+          if (effect) {
+            // Food item — eat it
+            eatFood(player, cell.ref);
+            menu.message = `Ate ${def?.name || cell.ref}!`;
+            menu.messageTimer = 1.5;
+          } else if (def) {
+            // Non-food item — inspect it
+            menu.message = `${def.name}: ${def.description}`;
+            menu.messageTimer = 3;
+          }
+        } else if (cell.kind === 'spell') {
+          // Spell — add to combo queue
+          if (player.comboQueue.length < 2) {
+            player.comboQueue.push({ kind: 'spell', ref: cell.ref });
+            menu.message = `Added ${cell.name} to combo queue`;
+            menu.messageTimer = 1.5;
+          }
         }
       }
       return null;
