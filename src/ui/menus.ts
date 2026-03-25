@@ -99,22 +99,30 @@ export function updateMenu(
       menu.gridCursorX = Math.min(GRID_COLS - 1, menu.gridCursorX + 1);
     }
 
-    // R11: Mouse-based grid navigation
+    // Mouse-based grid navigation (two-column layout)
     const mousePos = input.getMousePos();
-    const panelW = 470;
-    const panelX = CANVAS_WIDTH / 2 - panelW / 2;
-    const cellSize = 46;
-    const gap = 4;
-    const gridX = panelX + (panelW - GRID_COLS * (cellSize + gap) + gap) / 2;
-    const gridY = 30 + 55; // panelY + header
-    const mx = mousePos.x - gridX;
-    const my = mousePos.y - gridY;
-    if (mx >= 0 && my >= 0) {
-      const col = Math.floor(mx / (cellSize + gap));
-      const row = Math.floor(my / (cellSize + gap));
-      if (col >= 0 && col < GRID_COLS && row >= 0 && row < GRID_ROWS) {
-        menu.gridCursorX = col;
+    const mPanelW = 470;
+    const mPanelX = CANVAS_WIDTH / 2 - mPanelW / 2;
+    const mCellSize = 42;
+    const mGap = 3;
+    const mGridY = 30 + 55;
+    const mGridXLeft = mPanelX + 10;
+    const mGridXRight = mPanelX + mPanelW / 2 + 10;
+    const my = mousePos.y - mGridY;
+    if (my >= 0) {
+      const row = Math.floor(my / (mCellSize + mGap));
+      if (row >= 0 && row < GRID_ROWS) {
         menu.gridCursorY = row;
+        // Check left column
+        const mlx = mousePos.x - mGridXLeft;
+        if (mlx >= 0 && mlx < 4 * (mCellSize + mGap)) {
+          menu.gridCursorX = Math.floor(mlx / (mCellSize + mGap));
+        }
+        // Check right column
+        const mrx = mousePos.x - mGridXRight;
+        if (mrx >= 0 && mrx < 4 * (mCellSize + mGap)) {
+          menu.gridCursorX = 4 + Math.floor(mrx / (mCellSize + mGap));
+        }
       }
     }
 
@@ -303,20 +311,19 @@ const GRID_COLS = 8;
 const GRID_ROWS = 5;
 
 function buildInventoryGrid(player: Player): GridCell[] {
-  const cells: GridCell[] = [];
-
-  // Add spells first
+  // CSV4: Spells in columns 0-3, Items in columns 4-7
+  const spells: GridCell[] = [];
   for (const magic of player.magics) {
     const mt = magic.magicType;
     const color = MAGIC_TYPE_COLORS[mt as MagicType] || '#888888';
     const name = MAGIC_TYPE_NAMES[mt as MagicType] || mt;
-    cells.push({ kind: 'spell', ref: mt, name, color });
+    spells.push({ kind: 'spell', ref: mt, name, color });
   }
 
-  // Add items
+  const items: GridCell[] = [];
   for (const inv of player.inventory) {
     const def = getItemDef(inv.itemId);
-    cells.push({
+    items.push({
       kind: 'item',
       ref: inv.itemId,
       name: def?.name || inv.itemId,
@@ -325,7 +332,22 @@ function buildInventoryGrid(player: Player): GridCell[] {
     });
   }
 
-  // Fill remaining with empty
+  // Build the grid row by row: left 4 cols = spells, right 4 cols = items
+  const cells: GridCell[] = [];
+  const colWidth = 4;
+  for (let row = 0; row < GRID_ROWS; row++) {
+    // Left: spells
+    for (let col = 0; col < colWidth; col++) {
+      const spellIdx = row * colWidth + col;
+      cells.push(spellIdx < spells.length ? spells[spellIdx] : { kind: 'empty' });
+    }
+    // Right: items
+    for (let col = 0; col < colWidth; col++) {
+      const itemIdx = row * colWidth + col;
+      cells.push(itemIdx < items.length ? items[itemIdx] : { kind: 'empty' });
+    }
+  }
+
   while (cells.length < GRID_COLS * GRID_ROWS) {
     cells.push({ kind: 'empty' });
   }
@@ -344,28 +366,36 @@ function renderInventory(renderer: Renderer, menu: MenuState, player: Player): v
   renderer.drawText('INVENTORY', CANVAS_WIDTH / 2, panelY + 10, '#ffffff', 20, 'center');
   renderer.drawText(`Gold: ${player.gold}`, panelX + 10, panelY + 35, '#ffdd44', 12);
 
-  // FB12: Section labels
+  // CSV4: Two-column layout — Spells left, Items right
   const spellCount = player.magics.length;
   const itemCount = player.inventory.length;
-  renderer.drawText(`Spells (${spellCount})`, panelX + 10, panelY + 48, '#8866aa', 10);
-  if (itemCount > 0) {
-    const itemStartRow = Math.ceil(spellCount / GRID_COLS);
-    const itemLabelY = panelY + 55 + itemStartRow * (46 + 4) - 2;
-    renderer.drawText(`Items (${itemCount})`, panelX + 10, Math.min(itemLabelY, panelY + panelH - 100), '#886644', 10);
-  }
 
-  // Grid
   const cells = buildInventoryGrid(player);
-  const cellSize = 46;
-  const gap = 4;
-  const gridX = panelX + (panelW - GRID_COLS * (cellSize + gap) + gap) / 2;
+  const cellSize = 42;
+  const gap = 3;
+  const colWidth = 4; // 4 cells per column
   const gridY = panelY + 55;
+
+  // Column headers
+  renderer.drawText('SPELLS', panelX + 10, panelY + 42, '#8866aa', 11);
+  renderer.drawText('ITEMS', panelX + panelW / 2 + 10, panelY + 42, '#886644', 11);
+
+  // Divider line
+  const divX = panelX + panelW / 2 - 2;
+  renderer.drawRect(divX, gridY - 5, 2, GRID_ROWS * (cellSize + gap), '#333355');
+
+  const gridXLeft = panelX + 10;
+  const gridXRight = panelX + panelW / 2 + 10;
 
   for (let row = 0; row < GRID_ROWS; row++) {
     for (let col = 0; col < GRID_COLS; col++) {
       const idx = row * GRID_COLS + col;
       const cell = cells[idx];
-      const x = gridX + col * (cellSize + gap);
+      // Left column (0-3) = spells, Right column (4-7) = items
+      const isRightCol = col >= colWidth;
+      const colInSection = isRightCol ? col - colWidth : col;
+      const baseX = isRightCol ? gridXRight : gridXLeft;
+      const x = baseX + colInSection * (cellSize + gap);
       const y = gridY + row * (cellSize + gap);
       const isCursor = col === menu.gridCursorX && row === menu.gridCursorY;
 
