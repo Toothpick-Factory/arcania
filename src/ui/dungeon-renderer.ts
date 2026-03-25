@@ -55,6 +55,16 @@ export function renderDungeon(renderer: Renderer, dungeon: DungeonMap): void {
         renderer.drawCircle(x * TILE_SIZE + TILE_SIZE / 2, y * TILE_SIZE + TILE_SIZE / 2, 8, '#ff6622');
       }
 
+      // CSV3: Torches outside boss rooms
+      if ((tile.type === 'torch_yellow' || tile.type === 'torch_green' || tile.type === 'torch_red') && tile.visible) {
+        const torchColor = tile.type === 'torch_yellow' ? '#ffdd44' : tile.type === 'torch_green' ? '#44ff44' : '#ff4444';
+        const flicker = 0.6 + Math.sin(Date.now() / 150 + x * 7) * 0.3;
+        renderer.ctx.globalAlpha = flicker;
+        renderer.drawCircle(x * TILE_SIZE + TILE_SIZE / 2, y * TILE_SIZE + TILE_SIZE / 2, 6, torchColor);
+        renderer.ctx.globalAlpha = flicker * 0.4;
+        renderer.drawCircle(x * TILE_SIZE + TILE_SIZE / 2, y * TILE_SIZE + TILE_SIZE / 2, 12, torchColor);
+      }
+
       renderer.ctx.globalAlpha = 1;
     }
   }

@@ -71,7 +71,7 @@ export const BOSSES: EnemyDef[] = [
   {
     id: 'boss_slime_king', name: 'Slime King', hp: 300, damage: 20, speed: 50,
     xpReward: 150, goldDrop: [30, 50], color: '#22ee22', size: 40,
-    attackRange: 35, attackCooldown: 1.5, behavior: 'boss', minFloor: 2,
+    attackRange: 35, attackCooldown: 1.5, behavior: 'boss', minFloor: 1,
   },
   {
     id: 'boss_bone_lord', name: 'Bone Lord', hp: 500, damage: 30, speed: 70,

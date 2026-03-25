@@ -45,7 +45,7 @@ export interface Tile {
   explored: boolean;
 }
 
-export type TileType = 'floor' | 'wall' | 'door' | 'stairs' | 'shop' | 'cooking_station' | 'void';
+export type TileType = 'floor' | 'wall' | 'door' | 'stairs' | 'shop' | 'cooking_station' | 'torch_yellow' | 'torch_green' | 'torch_red' | 'void';
 
 export const TILE_SIZE = 32;
 export const CANVAS_WIDTH = 960;

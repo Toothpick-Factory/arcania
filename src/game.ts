@@ -131,7 +131,12 @@ export class Game {
       if (room.type === 'spawn' || room.type === 'shop' || room.type === 'cooking') continue;
 
       if (room.type === 'boss') {
-        const bossDef = getBossForFloor(this.state.floor);
+        let bossDef = getBossForFloor(this.state.floor);
+        // CSV2: Guarantee floor boss always spawns
+        if (!bossDef) {
+          const fallback = getEnemiesForFloor(this.state.floor);
+          bossDef = { ...randomChoice(fallback), behavior: 'boss' as const, hp: 300, size: 35, xpReward: 150, goldDrop: [30, 50] as [number, number] };
+        }
         if (bossDef) {
           const scaled = scaleEnemyForFloor(bossDef, this.state.floor);
           // FB9: Theme boss after the spell it will drop
@@ -141,7 +146,9 @@ export class Game {
           scaled.color = MAGIC_TYPE_COLORS[bossElement];
           scaled.name = `${MAGIC_TYPE_NAMES[bossElement]} ${scaled.name}`;
           const pos = getRoomCenterWorld(room);
-          this.enemies.push(createEnemy(scaled, pos));
+          const bossEnemy = createEnemy(scaled, pos);
+          bossEnemy.dormant = true; // CSV3: stays inactive until player enters
+          this.enemies.push(bossEnemy);
         }
         continue;
       }
@@ -252,6 +259,16 @@ export class Game {
 
         playerRoom.locked = true;
         this.addNotification('The room seals behind you!', '#ff4444');
+
+        // CSV3: Wake all dormant enemies in this room
+        for (const enemy of this.enemies) {
+          if (!enemy.active || !enemy.dormant) continue;
+          const et = worldToTile(enemy.position.x, enemy.position.y);
+          if (findRoomAt(this.dungeon, et.x, et.y) === playerRoom) {
+            enemy.dormant = false;
+            enemy.aware = true;
+          }
+        }
       }
     }
 

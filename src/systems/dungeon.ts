@@ -83,18 +83,29 @@ export function generateDungeon(floor: number): DungeonMap {
     }
   }
 
-  // Connect rooms with corridors
+  // Connect rooms with corridors (linear chain)
   for (let i = 1; i < rooms.length; i++) {
     const prevCenter = getRoomCenter(rooms[i - 1]);
     const currCenter = getRoomCenter(rooms[i]);
-
-    // Randomly choose horizontal-first or vertical-first
     if (Math.random() > 0.5) {
       carveHCorridor(tiles, prevCenter.x, currCenter.x, prevCenter.y);
       carveVCorridor(tiles, prevCenter.y, currCenter.y, currCenter.x);
     } else {
       carveVCorridor(tiles, prevCenter.y, currCenter.y, prevCenter.x);
       carveHCorridor(tiles, prevCenter.x, currCenter.x, currCenter.y);
+    }
+  }
+
+  // CSV2: Add extra connections to avoid dead ends — connect some non-adjacent rooms
+  const extraConnections = Math.floor(rooms.length / 3);
+  for (let i = 0; i < extraConnections; i++) {
+    const a = randomInt(0, rooms.length - 1);
+    const b = randomInt(0, rooms.length - 1);
+    if (a !== b) {
+      const ca = getRoomCenter(rooms[a]);
+      const cb = getRoomCenter(rooms[b]);
+      carveHCorridor(tiles, ca.x, cb.x, ca.y);
+      carveVCorridor(tiles, ca.y, cb.y, cb.x);
     }
   }
 
@@ -138,15 +149,15 @@ export function generateDungeon(floor: number): DungeonMap {
   if (midRooms.length > idx) { midRooms[idx].type = 'cooking'; idx++; }
   if (midRooms.length > idx) { midRooms[idx].type = 'treasure'; idx++; }
   // Entry-difficulty bosses (3-4 per floor)
-  const entryBossCount = Math.min(4, Math.max(3, Math.floor(midRooms.length / 4)));
+  // CSV2: Fewer boss rooms — most rooms should be normal combat rooms
+  // Entry bosses (2 per floor)
+  const entryBossCount = 2;
   for (let i = 0; i < entryBossCount && idx < midRooms.length; i++) {
     midRooms[idx].type = 'miniboss'; idx++;
   }
-  // Elite-difficulty bosses (1-2 per floor)
-  const eliteBossCount = Math.min(2, Math.max(1, Math.floor(midRooms.length / 6)));
-  for (let i = 0; i < eliteBossCount && idx < midRooms.length; i++) {
+  // Elite boss (1 per floor)
+  if (idx < midRooms.length) {
     midRooms[idx].type = 'miniboss'; idx++;
-    // Make elite rooms bigger
   }
 
   // Assign enemy counts
@@ -171,6 +182,21 @@ export function generateDungeon(floor: number): DungeonMap {
       tiles[center.y][center.x] = { type: 'shop', walkable: true, visible: false, explored: false };
     } else if (room.type === 'cooking') {
       tiles[center.y][center.x] = { type: 'cooking_station', walkable: true, visible: false, explored: false };
+    }
+
+    // CSV3: Place torches outside boss/miniboss rooms
+    if (room.type === 'boss' || room.type === 'miniboss') {
+      const torchType = room.type === 'boss' ? 'torch_red' as const : 'torch_yellow' as const;
+      // Place torches at room entrances (left and right of top edge, and top of left edge)
+      const tx1 = room.x - 1;
+      const ty1 = center.y;
+      if (tx1 >= 0 && tiles[ty1]?.[tx1]?.walkable) {
+        tiles[ty1][tx1] = { type: torchType, walkable: true, visible: false, explored: false };
+      }
+      const tx2 = room.x + room.width;
+      if (tx2 < width && tiles[ty1]?.[tx2]?.walkable) {
+        tiles[ty1][tx2] = { type: torchType, walkable: true, visible: false, explored: false };
+      }
     }
   }
 

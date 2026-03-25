@@ -11,8 +11,9 @@ export interface Enemy {
   maxHp: number;
   attackTimer: number;
   active: boolean;
-  aware: boolean;        // true if enemy can see the player
-  alertTimer: number;    // how long enemy stays aware after losing sight
+  dormant: boolean;      // CSV3: boss stays inactive until player enters room
+  aware: boolean;
+  alertTimer: number;
   stunTimer: number;
   knockbackVel: Vec2;
   // For ranged enemies
@@ -38,6 +39,7 @@ export function createEnemy(def: EnemyDef, position: Vec2): Enemy {
     maxHp: def.hp,
     attackTimer: 0,
     active: true,
+    dormant: false,
     aware: false,
     alertTimer: 0,
     stunTimer: 0,
@@ -54,6 +56,7 @@ export function updateEnemy(
   enemies: Enemy[]
 ): EnemyProjectile | null {
   if (!enemy.active) return null;
+  if (enemy.dormant) return null; // CSV3: dormant until player enters room
 
   // Line-of-sight awareness — enemy must see the player to engage
   const canSeePlayer = hasLineOfSight(dungeon, enemy.position, playerPos);
@@ -236,6 +239,7 @@ function moveEnemy(
 }
 
 export function damageEnemy(enemy: Enemy, damage: number, knockbackDir?: Vec2): boolean {
+  if (enemy.dormant) return false; // CSV3: can't damage dormant bosses
   enemy.hp -= damage;
   if (knockbackDir) {
     enemy.knockbackVel = vec2Scale(knockbackDir, 200);
