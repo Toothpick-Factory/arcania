@@ -219,8 +219,50 @@ export class Game {
       const insideX = playerTile.x > playerRoom.x + 1 && playerTile.x < playerRoom.x + playerRoom.width - 2;
       const insideY = playerTile.y > playerRoom.y + 1 && playerTile.y < playerRoom.y + playerRoom.height - 2;
       if (insideX && insideY) {
+        // Check if room has enemies — if not, spawn a wave
+        const roomEnemies = this.enemies.filter((e) => {
+          if (!e.active) return false;
+          const et = worldToTile(e.position.x, e.position.y);
+          return findRoomAt(this.dungeon, et.x, et.y) === playerRoom;
+        });
+
+        if (roomEnemies.length === 0) {
+          // Spawn enemies for this encounter
+          const count = playerRoom.type === 'boss' ? 1 : randomInt(2, 4);
+          const availableEnemies = getEnemiesForFloor(this.state.floor);
+          for (let i = 0; i < count; i++) {
+            const def = randomChoice(availableEnemies);
+            const scaled = scaleEnemyForFloor(def, this.state.floor + (playerRoom.type === 'boss' ? 3 : 1));
+            if (playerRoom.type === 'miniboss') {
+              scaled.hp = Math.round(scaled.hp * 2);
+              scaled.damage = Math.round(scaled.damage * 1.5);
+              scaled.size = Math.round(scaled.size * 1.3);
+              scaled.name = `Elite ${scaled.name}`;
+            }
+            const pos = {
+              x: (playerRoom.x + randomInt(2, playerRoom.width - 3)) * TILE_SIZE + TILE_SIZE / 2,
+              y: (playerRoom.y + randomInt(2, playerRoom.height - 3)) * TILE_SIZE + TILE_SIZE / 2,
+            };
+            this.enemies.push(createEnemy(scaled, pos));
+          }
+        }
+
         playerRoom.locked = true;
         this.addNotification('The room seals behind you!', '#ff4444');
+      }
+    }
+
+    // Safety valve: if a room is locked but has no living enemies, unseal it
+    if (playerRoom && playerRoom.locked) {
+      const livingEnemies = this.enemies.filter((e) => {
+        if (!e.active) return false;
+        const et = worldToTile(e.position.x, e.position.y);
+        return findRoomAt(this.dungeon, et.x, et.y) === playerRoom;
+      });
+      if (livingEnemies.length === 0) {
+        playerRoom.locked = false;
+        playerRoom.cleared = true;
+        this.addNotification('Room unsealed!', '#44ff44');
       }
     }
 
