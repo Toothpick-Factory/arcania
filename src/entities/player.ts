@@ -143,17 +143,22 @@ export function updatePlayer(player: Player, input: InputManager, dungeon: Dunge
   }
   if (canMoveY) player.position.y = newY;
 
-  // FB3: Enforce locked room boundaries — can't leave a locked boss room
+  // FB3: Locked room — prevent leaving, but don't clamp into walls
+  // Only restrict if the player is fully inside the locked room
   const playerTile = worldToTile(player.position.x, player.position.y);
   const currentRoom = findRoomAt(dungeon, playerTile.x, playerTile.y);
   if (currentRoom && currentRoom.locked) {
-    // Clamp position to room bounds
-    const roomLeft = currentRoom.x * 32 + halfW + 4;
-    const roomRight = (currentRoom.x + currentRoom.width) * 32 - halfW - 4;
-    const roomTop = currentRoom.y * 32 + halfH + 4;
-    const roomBottom = (currentRoom.y + currentRoom.height) * 32 - halfH - 4;
-    player.position.x = Math.max(roomLeft, Math.min(roomRight, player.position.x));
-    player.position.y = Math.max(roomTop, Math.min(roomBottom, player.position.y));
+    // Keep player inside the room with 1-tile padding from the walls
+    const padding = 32; // TILE_SIZE
+    const roomLeft = (currentRoom.x + 1) * 32;
+    const roomRight = (currentRoom.x + currentRoom.width - 1) * 32;
+    const roomTop = (currentRoom.y + 1) * 32;
+    const roomBottom = (currentRoom.y + currentRoom.height - 1) * 32;
+    // Only clamp if player would leave — don't push them if already inside
+    if (player.position.x < roomLeft) player.position.x = roomLeft;
+    if (player.position.x > roomRight) player.position.x = roomRight;
+    if (player.position.y < roomTop) player.position.y = roomTop;
+    if (player.position.y > roomBottom) player.position.y = roomBottom;
   }
 
   // Update facing direction

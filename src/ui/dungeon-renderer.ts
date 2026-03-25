@@ -59,6 +59,38 @@ export function renderDungeon(renderer: Renderer, dungeon: DungeonMap): void {
   }
 }
 
+export function renderLockedRoomBarriers(renderer: Renderer, dungeon: DungeonMap): void {
+  for (const room of dungeon.rooms) {
+    if (!room.locked) continue;
+
+    const pulse = 0.4 + Math.sin(Date.now() / 300) * 0.2;
+    renderer.ctx.globalAlpha = pulse;
+
+    // Draw glowing barriers along the room edges
+    const x1 = room.x * TILE_SIZE;
+    const y1 = room.y * TILE_SIZE;
+    const w = room.width * TILE_SIZE;
+    const h = room.height * TILE_SIZE;
+
+    // Red barrier lines
+    renderer.ctx.strokeStyle = '#ff2244';
+    renderer.ctx.lineWidth = 3;
+    renderer.ctx.strokeRect(x1 + 2, y1 + 2, w - 4, h - 4);
+
+    // Glowing corners
+    const cornerSize = 8;
+    renderer.drawRect(x1, y1, cornerSize, cornerSize, '#ff4444');
+    renderer.drawRect(x1 + w - cornerSize, y1, cornerSize, cornerSize, '#ff4444');
+    renderer.drawRect(x1, y1 + h - cornerSize, cornerSize, cornerSize, '#ff4444');
+    renderer.drawRect(x1 + w - cornerSize, y1 + h - cornerSize, cornerSize, cornerSize, '#ff4444');
+
+    renderer.ctx.globalAlpha = 1;
+
+    // "SEALED" text above the room
+    renderer.drawText('SEALED', x1 + w / 2, y1 - 8, '#ff4444', 10, 'center');
+  }
+}
+
 export function renderPlayer(renderer: Renderer, player: Player): void {
   const { x, y } = player.position;
   const halfW = player.width / 2;

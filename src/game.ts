@@ -31,7 +31,8 @@ import { MenuState, createMenuState, updateMenu, renderMenu } from './ui/menus';
 import { renderHUD, renderMinimap, zoomMinimap } from './ui/hud';
 import {
   renderDungeon, renderPlayer, renderEnemies, renderProjectiles,
-  renderEnemyProjectiles, renderAoeEffects, renderInteractionPrompt
+  renderEnemyProjectiles, renderAoeEffects, renderInteractionPrompt,
+  renderLockedRoomBarriers
 } from './ui/dungeon-renderer';
 import { vec2Sub, vec2Normalize, vec2Dist, vec2Len, randomChoice, randomInt } from './utils/math';
 
@@ -212,11 +213,15 @@ export class Game {
     const playerTile = worldToTile(this.player.position.x, this.player.position.y);
     updateVisibility(this.dungeon, playerTile.x, playerTile.y);
 
-    // R3: Lock boss/miniboss rooms when player enters
+    // R3: Lock boss/miniboss rooms when player is fully inside (2 tiles from edge)
     const playerRoom = findRoomAt(this.dungeon, playerTile.x, playerTile.y);
     if (playerRoom && (playerRoom.type === 'boss' || playerRoom.type === 'miniboss') && !playerRoom.locked && !playerRoom.cleared) {
-      playerRoom.locked = true;
-      this.addNotification('The room seals behind you!', '#ff4444');
+      const insideX = playerTile.x > playerRoom.x + 1 && playerTile.x < playerRoom.x + playerRoom.width - 2;
+      const insideY = playerTile.y > playerRoom.y + 1 && playerTile.y < playerRoom.y + playerRoom.height - 2;
+      if (insideX && insideY) {
+        playerRoom.locked = true;
+        this.addNotification('The room seals behind you!', '#ff4444');
+      }
     }
 
     // M key toggles fog of war debug mode
@@ -800,6 +805,7 @@ export class Game {
       this.renderer.beginCamera();
       renderDungeon(this.renderer, this.dungeon);
       renderAoeEffects(this.renderer, this.aoeEffects);
+      renderLockedRoomBarriers(this.renderer, this.dungeon);
       if (this.state.scene !== 'lobby') {
         renderEnemies(this.renderer, this.enemies, this.dungeon, this.debugFog);
       }
