@@ -106,10 +106,8 @@ export class Game {
     this.player.hotbar[0] = { kind: 'spell', ref: startingSpell };
     this.addNotification(`Starting spell: ${MAGIC_TYPE_NAMES[startingSpell]}`, MAGIC_TYPE_COLORS[startingSpell]);
 
-    // Restore discovered combos (these persist across runs)
-    if (this.meta.discoveredCombos) {
-      this.player.discoveredCombos = [...this.meta.discoveredCombos];
-    }
+    // CSV10: Per-run combos start empty — discovered as you play
+    this.player.discoveredCombos = [];
 
     this.generateFloor();
     this.menu.type = 'none';
@@ -752,44 +750,57 @@ export class Game {
   }
 
   private handleSelfBuff(): void {
-    // R14: Cast a self-buff based on the active spell element
-    const slot = this.player.hotbar[this.player.activeHotbarIndex];
-    if (!slot || slot.kind !== 'spell' || !slot.ref) return;
+    // CSV6: Self-buff from combo queue or active spell. Puts spell on CD. Tier scales shield.
+    const queue = this.player.comboQueue;
+    let elements: MagicType[] = [];
 
-    const magic = this.player.magics.find((m) => m.magicType === slot.ref);
-    if (!magic) return;
-
-    const spellDef = getActiveSpellForMagic(slot.ref as MagicType, magic.xp);
-    if (!spellDef) return;
-
-    const buffId = `selfbuff_${slot.ref}`;
-    if (this.player.spellCooldowns.has(buffId)) return;
-
-    // R15: Different buff per element — also creates visible shield
-    const mt = slot.ref as MagicType;
-    let shieldAmt = 20 + this.player.level * 2;
-    let shieldDur = 5;
-    let notifText = '';
-
-    switch (mt) {
-      case 'fire': notifText = 'Fire Shield — damage reflection'; shieldAmt += 10; break;
-      case 'ice': notifText = 'Frost Barrier — slows attackers'; shieldAmt += 15; shieldDur = 6; break;
-      case 'earth': notifText = 'Stone Armor — heavy defense'; shieldAmt += 30; shieldDur = 8; break;
-      case 'crystal': notifText = 'Crystal Ward — reflects projectiles'; shieldAmt += 20; break;
-      case 'light': notifText = 'Holy Shield — regeneration'; healPlayer(this.player, 15); shieldAmt += 10; break;
-      case 'blood': notifText = 'Blood Armor — lifesteal boost'; shieldAmt += 15; break;
-      case 'necrotic': notifText = 'Bone Shield — absorbs hits'; shieldAmt += 25; break;
-      case 'lightning': notifText = 'Static Field — stuns melee'; shieldAmt += 10; shieldDur = 4; break;
-      case 'lunar': notifText = 'Moon Cloak — evasion'; shieldAmt += 15; shieldDur = 6; break;
-      case 'poison': notifText = 'Toxic Shroud — poisons attackers'; shieldAmt += 10; break;
-      case 'minion': notifText = 'Minion Guard — summon defends'; shieldAmt += 15; break;
-      default: notifText = 'Magic Shield'; break;
+    if (queue.length > 0) {
+      // Use queued spells for combo shield
+      elements = queue.filter((q) => q.kind === 'spell').map((q) => q.ref as MagicType);
+      this.player.comboQueue = [];
+    } else {
+      // Use active hotbar spell
+      const slot = this.player.hotbar[this.player.activeHotbarIndex];
+      if (slot?.kind === 'spell' && slot.ref) {
+        elements = [slot.ref as MagicType];
+      }
     }
 
-    addShield(this.player, shieldAmt, shieldDur, MAGIC_TYPE_COLORS[mt] || '#4488cc');
-    this.player.spellCooldowns.set(buffId, 8);
-    this.addNotification(notifText, MAGIC_TYPE_COLORS[mt] || '#ffffff');
-    addMagicXp(this.player, mt, 2);
+    if (elements.length === 0) return;
+
+    const primaryMt = elements[0];
+    const magic = this.player.magics.find((m) => m.magicType === primaryMt);
+    if (!magic) return;
+
+    const spellDef = getActiveSpellForMagic(primaryMt, magic.xp);
+    if (!spellDef) return;
+
+    // CSV6: Put the primary spell on cooldown
+    if (this.player.spellCooldowns.has(spellDef.id)) return;
+    this.player.spellCooldowns.set(spellDef.id, spellDef.cooldown);
+
+    // CSV6: Tier scales shield strength and duration
+    const tier = getHighestUnlockedTier(magic.xp);
+    const baseShield = 15 + tier * 10 + this.player.level * 2; // T1=25, T5=65 + level
+    const baseDur = 3 + tier * 1.5; // T1=4.5s, T5=10.5s
+
+    // CSV7: Combo shield uses both colors
+    let shieldColor: string;
+    if (elements.length >= 2) {
+      shieldColor = MAGIC_TYPE_COLORS[elements[1]] || '#4488cc'; // secondary color dominant
+      this.player.shieldColor = shieldColor;
+      // Store both colors for swirl rendering
+      (this.player as any)._shieldColor2 = MAGIC_TYPE_COLORS[elements[0]];
+    } else {
+      shieldColor = MAGIC_TYPE_COLORS[primaryMt] || '#4488cc';
+      (this.player as any)._shieldColor2 = undefined;
+    }
+
+    addShield(this.player, baseShield, baseDur, shieldColor);
+
+    const names = elements.map((e) => MAGIC_TYPE_NAMES[e]).join(' + ');
+    this.addNotification(`${names} Shield (T${tier})`, shieldColor);
+    for (const el of elements) addMagicXp(this.player, el, 2);
   }
 
   private handleInteraction(): void {

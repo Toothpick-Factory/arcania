@@ -180,16 +180,31 @@ export function renderPlayer(renderer: Renderer, player: Player): void {
     renderer.drawRect(x - 4, y - halfH - 12, 8, 6, '#4422aa');
   }
 
-  // R15: Visible shield on character
+  // CSV7: Visible shield with element color(s)
   if (player.shield > 0) {
     const shieldAlpha = Math.min(0.5, player.shield / 60);
-    renderer.ctx.globalAlpha = shieldAlpha;
-    renderer.drawCircle(x, y, halfW + 6, player.shieldColor);
-    renderer.ctx.globalAlpha = 0.7;
-    renderer.drawCircle(x, y, halfW + 4, player.shieldColor);
+    const color1 = player.shieldColor;
+    const color2 = (player as any)._shieldColor2 as string | undefined;
+
+    if (color2) {
+      // Dual-color swirl effect — alternate colors based on angle
+      const t = Date.now() / 500;
+      for (let angle = 0; angle < Math.PI * 2; angle += 0.3) {
+        const useColor2 = Math.sin(angle * 3 + t) > 0;
+        renderer.ctx.globalAlpha = shieldAlpha;
+        const r = halfW + 5;
+        const ax = x + Math.cos(angle) * r;
+        const ay = y + Math.sin(angle) * r;
+        renderer.drawCircle(ax, ay, 3, useColor2 ? color2 : color1);
+      }
+    } else {
+      renderer.ctx.globalAlpha = shieldAlpha;
+      renderer.drawCircle(x, y, halfW + 6, color1);
+      renderer.ctx.globalAlpha = 0.7;
+      renderer.drawCircle(x, y, halfW + 4, color1);
+    }
     renderer.ctx.globalAlpha = 1;
-    // Shield HP text
-    renderer.drawText(`${player.shield}`, x, y - halfH - 16, '#88ccff', 9, 'center');
+    renderer.drawText(`${player.shield}`, x, y - halfH - 16, color1, 9, 'center');
   }
 
   // Facing direction indicator (staff/wand)

@@ -273,7 +273,7 @@ export function renderMenu(renderer: Renderer, menu: MenuState, player: Player, 
     case 'shop': renderShop(renderer, menu, player); break;
     case 'pause': renderPause(renderer, menu); break;
     case 'controls': renderControls(renderer); break;
-    case 'compendium': renderCompendium(renderer, player); break;
+    case 'compendium': renderCompendium(renderer, player, meta); break;
     case 'boss_reward': renderBossReward(renderer, menu); break;
     case 'death': renderDeath(renderer, player, meta); break;
     case 'victory': renderVictory(renderer, player, meta); break;
@@ -513,7 +513,7 @@ function renderBossReward(renderer: Renderer, menu: MenuState): void {
   renderer.drawText('[Enter] or Click to choose', CANVAS_WIDTH / 2, panelY + panelH - 20, '#555555', 11, 'center');
 }
 
-function renderCompendium(renderer: Renderer, player: Player): void {
+function renderCompendium(renderer: Renderer, player: Player, meta: MetaSave): void {
   const panelX = CANVAS_WIDTH / 2 - 240;
   const panelY = 30;
   const panelW = 480;
@@ -521,10 +521,15 @@ function renderCompendium(renderer: Renderer, player: Player): void {
 
   renderer.drawRect(panelX, panelY, panelW, panelH, '#1a1a2e');
   renderer.drawRectOutline(panelX, panelY, panelW, panelH, '#ffdd44');
-  renderer.drawText('SPELL COMPENDIUM (This Run)', CANVAS_WIDTH / 2, panelY + 12, '#ffdd44', 20, 'center');
+  renderer.drawText('SPELL COMPENDIUM', CANVAS_WIDTH / 2, panelY + 12, '#ffdd44', 20, 'center');
 
-  const discovered = player.discoveredCombos;
-  renderer.drawText(`Discovered this run: ${discovered.length}`, CANVAS_WIDTH / 2, panelY + 38, '#aaaaaa', 12, 'center');
+  // CSV10: Show per-run in dungeon, all-time in lobby
+  const runCombos = player.discoveredCombos;
+  const allTimeCombos = meta.discoveredCombos || [];
+  const inRun = player.magics.length > 0; // in lobby, player has no magics
+  const discovered = inRun ? runCombos : allTimeCombos;
+  const label = inRun ? `This Run: ${discovered.length}` : `All Time: ${discovered.length}`;
+  renderer.drawText(label, CANVAS_WIDTH / 2, panelY + 38, '#aaaaaa', 12, 'center');
 
   if (discovered.length === 0) {
     renderer.drawText('No combos discovered yet!', CANVAS_WIDTH / 2, panelY + 80, '#888888', 14, 'center');
