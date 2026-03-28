@@ -4,11 +4,11 @@ import { Player, getItemCount, removeItemFromInventory } from '../entities/playe
 import { CANVAS_WIDTH, CANVAS_HEIGHT } from '../engine/types';
 import { MetaSave } from '../systems/save';
 import { Shop, buyItem } from '../systems/shop';
-import { getItemDef, getFoodEffect, HOTBAR_SIZE } from '../data/items';
-import { eatFood } from '../systems/cooking';
+import { getItemDef, getFoodEffect, HOTBAR_SIZE, COOKING_RECIPES, RecipeDef } from '../data/items';
+import { eatFood, canCook, cook, getAvailableRecipes } from '../systems/cooking';
 import { MagicType, MAGIC_TYPE_COLORS, MAGIC_TYPE_NAMES, getActiveSpellForMagic, getHighestUnlockedTier, COMBO_SPELLS, getSpellById } from '../data/spells';
 
-export type MenuType = 'none' | 'inventory' | 'shop' | 'pause' | 'controls' | 'compendium' | 'boss_reward' | 'death' | 'victory' | 'hub';
+export type MenuType = 'none' | 'inventory' | 'shop' | 'cooking' | 'pause' | 'controls' | 'compendium' | 'boss_reward' | 'death' | 'victory' | 'hub';
 
 export interface GridCell {
   kind: 'spell' | 'item' | 'empty';
@@ -52,6 +52,10 @@ export function updateMenu(
 
   // ESC to close menus or open pause
   if (input.isKeyJustPressed('Escape')) {
+    if (menu.type === 'cooking') {
+      menu.type = 'none';
+      return null;
+    }
     if (menu.type === 'controls' || menu.type === 'compendium') {
       menu.type = 'pause';
       menu.selectedIndex = 0;
@@ -207,6 +211,36 @@ export function updateMenu(
         }
       }
     }
+    // Cooking menu mouse hover + click
+    if (menu.type === 'cooking') {
+      const mPos = input.getMousePos();
+      const recipes = getAvailableRecipes(player, meta);
+      const panelY = 60;
+      for (let i = 0; i < recipes.length; i++) {
+        const optY = panelY + 65 + i * 55;
+        if (mPos.y >= optY && mPos.y <= optY + 48 && mPos.x > CANVAS_WIDTH / 2 - 195 && mPos.x < CANVAS_WIDTH / 2 + 195) {
+          menu.selectedIndex = i;
+          if (input.isMouseJustClicked()) {
+            return handleMenuAction(menu, player, meta);
+          }
+        }
+      }
+    }
+    // Boss reward mouse hover + click
+    if (menu.type === 'boss_reward') {
+      const mPos = input.getMousePos();
+      const panelX = CANVAS_WIDTH / 2 - 200;
+      const panelY = CANVAS_HEIGHT / 2 - 120;
+      for (let i = 0; i < 2; i++) {
+        const optY = panelY + 80 + i * 55;
+        if (mPos.y >= optY && mPos.y <= optY + 45 && mPos.x > panelX + 20 && mPos.x < panelX + 380) {
+          menu.selectedIndex = i;
+          if (input.isMouseJustClicked()) {
+            return handleMenuAction(menu, player, meta);
+          }
+        }
+      }
+    }
     if (menu.type === 'hub' && input.isMouseJustClicked()) {
       const mPos = input.getMousePos();
       if (mPos.y >= 310 && mPos.y <= 360 && mPos.x > CANVAS_WIDTH / 2 - 150 && mPos.x < CANVAS_WIDTH / 2 + 150) {
@@ -226,6 +260,21 @@ export function updateMenu(
 
 function handleMenuAction(menu: MenuState, player: Player, meta: MetaSave): string | null {
   switch (menu.type) {
+    case 'cooking': {
+      const recipes = getAvailableRecipes(player, meta);
+      if (menu.selectedIndex < recipes.length) {
+        const recipe = recipes[menu.selectedIndex];
+        if (canCook(player, recipe)) {
+          cook(player, recipe, meta);
+          menu.message = `Cooked ${recipe.name}!`;
+          menu.messageTimer = 2;
+        } else {
+          menu.message = 'Missing ingredients!';
+          menu.messageTimer = 1.5;
+        }
+      }
+      return null;
+    }
     case 'shop': {
       if (menu.shop && menu.selectedIndex < menu.shop.items.length) {
         const success = buyItem(player, menu.shop, menu.selectedIndex);
@@ -291,6 +340,7 @@ export function renderMenu(renderer: Renderer, menu: MenuState, player: Player, 
 
   switch (menu.type) {
     case 'inventory': renderInventory(renderer, menu, player); break;
+    case 'cooking': renderCooking(renderer, menu, player, meta); break;
     case 'shop': renderShop(renderer, menu, player); break;
     case 'pause': renderPause(renderer, menu); break;
     case 'controls': renderControls(renderer); break;
@@ -522,6 +572,97 @@ function renderShop(renderer: Renderer, menu: MenuState, player: Player): void {
   renderer.drawText('[Enter] Buy  [ESC] Close', CANVAS_WIDTH / 2, panelY + 380, '#666666', 11, 'center');
 }
 
+
+function renderCooking(renderer: Renderer, menu: MenuState, player: Player, meta: MetaSave): void {
+  const panelX = CANVAS_WIDTH / 2 - 200;
+  const panelY = 60;
+  const panelW = 400;
+  const panelH = 480;
+
+  renderer.drawRect(panelX, panelY, panelW, panelH, '#1a1a2e');
+  renderer.drawRectOutline(panelX, panelY, panelW, panelH, '#ff8844');
+  renderer.drawText('COOKING', CANVAS_WIDTH / 2, panelY + 12, '#ff8844', 22, 'center');
+
+  // Show player's ingredients
+  const ingredients = player.inventory.filter((inv) => {
+    const def = getItemDef(inv.itemId);
+    return def?.category === 'ingredient';
+  });
+  if (ingredients.length > 0) {
+    renderer.drawText('Ingredients:', panelX + 10, panelY + 38, '#888888', 11);
+    let ix = panelX + 90;
+    for (const inv of ingredients) {
+      const def = getItemDef(inv.itemId);
+      if (def) {
+        renderer.drawRect(ix, panelY + 36, 10, 10, def.color);
+        renderer.drawText(`${def.name.substring(0, 8)} x${inv.count}`, ix + 14, panelY + 36, '#cccccc', 9);
+        ix += 90;
+        if (ix > panelX + panelW - 40) break;
+      }
+    }
+  } else {
+    renderer.drawText('No ingredients', panelX + 10, panelY + 38, '#666666', 11);
+  }
+
+  // Show recipes
+  const recipes = getAvailableRecipes(player, meta);
+  if (recipes.length === 0) {
+    renderer.drawText('No recipes available', CANVAS_WIDTH / 2, panelY + 100, '#888888', 14, 'center');
+    renderer.drawText('Gather ingredients to discover recipes!', CANVAS_WIDTH / 2, panelY + 120, '#666666', 11, 'center');
+  } else {
+    menu.selectedIndex = Math.min(menu.selectedIndex, recipes.length - 1);
+    for (let i = 0; i < recipes.length; i++) {
+      const recipe = recipes[i];
+      const y = panelY + 65 + i * 55;
+      const isSelected = i === menu.selectedIndex;
+      const hasIngredients = canCook(player, recipe);
+
+      renderer.drawRect(panelX + 10, y, panelW - 20, 48, isSelected ? '#333344' : '#222233');
+      renderer.drawRectOutline(panelX + 10, y, panelW - 20, 48, isSelected ? '#ff8844' : '#444444', isSelected ? 2 : 1);
+
+      // Result item color indicator
+      const resultDef = getItemDef(recipe.result);
+      if (resultDef) {
+        renderer.drawRect(panelX + 16, y + 6, 14, 14, resultDef.color);
+      }
+
+      // Recipe name
+      renderer.drawText(
+        recipe.name,
+        panelX + 38, y + 4,
+        isSelected ? '#ffffff' : '#aaaaaa', 14
+      );
+
+      // Ingredients list
+      const ingNames = recipe.ingredients.map((id) => {
+        const def = getItemDef(id);
+        return def?.name || id;
+      }).join(' + ');
+      renderer.drawText(ingNames, panelX + 38, y + 22, '#888888', 9);
+
+      // Status
+      if (hasIngredients) {
+        renderer.drawText(isSelected ? '[Enter] Cook' : 'Ready', panelX + panelW - 90, y + 8, '#44ff44', 10);
+      } else {
+        renderer.drawText('Missing items', panelX + panelW - 100, y + 8, '#ff4444', 10);
+      }
+
+      // Food effect preview
+      const effect = getFoodEffect(recipe.result);
+      if (effect && isSelected) {
+        const parts: string[] = [];
+        if (effect.healAmount) parts.push(`Heal ${effect.healAmount}`);
+        if (effect.damageBonus) parts.push(`+${effect.damageBonus} Dmg`);
+        if (effect.speedBonus) parts.push(`+${effect.speedBonus} Spd`);
+        if (effect.maxHpBonus) parts.push(`+${effect.maxHpBonus} Max HP`);
+        if (effect.duration) parts.push(`${effect.duration}s`);
+        renderer.drawText(parts.join(' | '), panelX + 38, y + 34, '#ffdd44', 8);
+      }
+    }
+  }
+
+  renderer.drawText('[Enter/Click] Cook  [ESC] Close  [W/S] Navigate', CANVAS_WIDTH / 2, panelY + panelH - 16, '#555555', 10, 'center');
+}
 
 function renderBossReward(renderer: Renderer, menu: MenuState): void {
   const panelX = CANVAS_WIDTH / 2 - 200;

@@ -16,6 +16,8 @@ export interface Enemy {
   alertTimer: number;
   stunTimer: number;
   knockbackVel: Vec2;
+  isBoss: boolean;     // true for designated boss/miniboss (grants rewards)
+  roomBounds?: { left: number; right: number; top: number; bottom: number }; // confine to room
   // For ranged enemies
   shootTimer: number;
 }
@@ -44,6 +46,7 @@ export function createEnemy(def: EnemyDef, position: Vec2): Enemy {
     alertTimer: 0,
     stunTimer: 0,
     knockbackVel: { x: 0, y: 0 },
+    isBoss: false,
     shootTimer: def.attackCooldown,
   };
 }
@@ -90,6 +93,14 @@ export function updateEnemy(
     const tile = worldToTile(enemy.position.x, enemy.position.y);
     if (!isTileWalkable(dungeon, tile.x, tile.y)) {
       enemy.knockbackVel = { x: 0, y: 0 };
+    }
+    // Clamp to room bounds if confined
+    if (enemy.roomBounds) {
+      const b = enemy.roomBounds;
+      if (enemy.position.x < b.left) enemy.position.x = b.left;
+      if (enemy.position.x > b.right) enemy.position.x = b.right;
+      if (enemy.position.y < b.top) enemy.position.y = b.top;
+      if (enemy.position.y > b.bottom) enemy.position.y = b.bottom;
     }
     return null;
   }
@@ -222,6 +233,15 @@ function moveEnemy(
     );
     if (canSlideX) enemy.position.x = slideX;
     else if (canSlideY) enemy.position.y = slideY;
+  }
+
+  // Clamp to room bounds if confined
+  if (enemy.roomBounds) {
+    const b = enemy.roomBounds;
+    if (enemy.position.x < b.left) enemy.position.x = b.left;
+    if (enemy.position.x > b.right) enemy.position.x = b.right;
+    if (enemy.position.y < b.top) enemy.position.y = b.top;
+    if (enemy.position.y > b.bottom) enemy.position.y = b.bottom;
   }
 
   // Simple separation from other enemies

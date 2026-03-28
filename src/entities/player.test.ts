@@ -99,6 +99,30 @@ describe('Player XP and leveling', () => {
     expect(result.leveled).toBe(true);
     expect(result.newTier).toBe(2);
   });
+
+  it('addMagicXp returns leveled:false when not enough XP for next tier', () => {
+    const p = createPlayer();
+    unlockMagic(p, 'fire');
+    const result = addMagicXp(p, 'fire', 10);
+    expect(result.leveled).toBe(false);
+    expect(result.newTier).toBeUndefined();
+    expect(p.magics[0].xp).toBe(10);
+  });
+
+  it('addMagicXp returns leveled:false for unknown magic type', () => {
+    const p = createPlayer();
+    const result = addMagicXp(p, 'fire', 50);
+    expect(result.leveled).toBe(false);
+  });
+
+  it('addMagicXp can reach tier 3 with cumulative XP', () => {
+    const p = createPlayer();
+    unlockMagic(p, 'fire');
+    addMagicXp(p, 'fire', 40); // tier 2 at 40
+    const result = addMagicXp(p, 'fire', 80); // total 120 -> tier 3
+    expect(result.leveled).toBe(true);
+    expect(result.newTier).toBe(3);
+  });
 });
 
 describe('Player inventory', () => {

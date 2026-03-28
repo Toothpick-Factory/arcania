@@ -107,6 +107,39 @@ describe('Visibility', () => {
     expect(dungeon.tiles[tile.y][tile.x].visible).toBe(true);
     expect(dungeon.tiles[tile.y][tile.x].explored).toBe(true);
   });
+
+  it('explored tiles stay explored when visibility is cleared', () => {
+    const dungeon = generateDungeon(1);
+    const spawnCenter = getRoomCenterWorld(dungeon.spawnRoom);
+    const tile = worldToTile(spawnCenter.x, spawnCenter.y);
+
+    // First update: mark tiles as visible + explored
+    updateVisibility(dungeon, tile.x, tile.y, 8);
+    expect(dungeon.tiles[tile.y][tile.x].visible).toBe(true);
+    expect(dungeon.tiles[tile.y][tile.x].explored).toBe(true);
+
+    // Move player far away so previously visible tiles lose visibility
+    // Use boss room which is far from spawn
+    const bossCenter = getRoomCenterWorld(dungeon.bossRoom);
+    const bossTile = worldToTile(bossCenter.x, bossCenter.y);
+    updateVisibility(dungeon, bossTile.x, bossTile.y, 8);
+
+    // Original spawn tile should no longer be visible but should remain explored
+    expect(dungeon.tiles[tile.y][tile.x].visible).toBe(false);
+    expect(dungeon.tiles[tile.y][tile.x].explored).toBe(true);
+  });
+
+  it('unexplored tiles remain unexplored outside radius', () => {
+    const dungeon = generateDungeon(1);
+    const center = getRoomCenterWorld(dungeon.spawnRoom);
+    const tile = worldToTile(center.x, center.y);
+    updateVisibility(dungeon, tile.x, tile.y, 8);
+
+    // A tile far from the player should not be explored
+    const farTile = dungeon.tiles[0][0];
+    expect(farTile.explored).toBe(false);
+    expect(farTile.visible).toBe(false);
+  });
 });
 
 describe('findRoomAt', () => {

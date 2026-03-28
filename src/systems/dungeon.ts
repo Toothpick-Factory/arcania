@@ -184,18 +184,20 @@ export function generateDungeon(floor: number): DungeonMap {
       tiles[center.y][center.x] = { type: 'cooking_station', walkable: true, visible: false, explored: false };
     }
 
-    // CSV3: Place torches outside boss/miniboss rooms
+    // CSV3: Place torches on walls flanking boss/miniboss rooms (not in doorways)
     if (room.type === 'boss' || room.type === 'miniboss') {
       const torchType = room.type === 'boss' ? 'torch_red' as const : 'torch_yellow' as const;
-      // Place torches at room entrances (left and right of top edge, and top of left edge)
-      const tx1 = room.x - 1;
-      const ty1 = center.y;
-      if (tx1 >= 0 && tiles[ty1]?.[tx1]?.walkable) {
-        tiles[ty1][tx1] = { type: torchType, walkable: true, visible: false, explored: false };
-      }
-      const tx2 = room.x + room.width;
-      if (tx2 < width && tiles[ty1]?.[tx2]?.walkable) {
-        tiles[ty1][tx2] = { type: torchType, walkable: true, visible: false, explored: false };
+      // Place torches on the inner wall corners of the room
+      const positions = [
+        { x: room.x, y: room.y },                                    // top-left
+        { x: room.x + room.width - 1, y: room.y },                   // top-right
+        { x: room.x, y: room.y + room.height - 1 },                  // bottom-left
+        { x: room.x + room.width - 1, y: room.y + room.height - 1 }, // bottom-right
+      ];
+      for (const pos of positions) {
+        if (pos.x >= 0 && pos.x < width && pos.y >= 0 && pos.y < height) {
+          tiles[pos.y][pos.x] = { type: torchType, walkable: false, visible: false, explored: false };
+        }
       }
     }
   }

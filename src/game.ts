@@ -20,8 +20,8 @@ import {
   updateVisibility, findRoomAt, lineOfSightClamp
 } from './systems/dungeon';
 import {
-  MagicType, SpellDef, COMBO_SPELLS, findComboSpell, getSpellById,
-  getActiveSpellForMagic, getHighestUnlockedTier, MAGIC_TYPE_NAMES, MAGIC_TYPE_COLORS, ALL_MAGIC_TYPES,
+  MagicType, SpellDef, SpellTier, COMBO_SPELLS, findComboSpell, getSpellById,
+  getActiveSpellForMagic, getHighestUnlockedTier, TIER_XP_THRESHOLDS, MAGIC_TYPE_NAMES, MAGIC_TYPE_COLORS, ALL_MAGIC_TYPES,
 } from './data/spells';
 import { findComboRecipe, getItemDef, getFoodEffect, QueueEntry } from './data/items';
 import { getEnemiesForFloor, getBossForFloor, scaleEnemyForFloor } from './data/enemies';
@@ -146,6 +146,13 @@ export class Game {
           const pos = getRoomCenterWorld(room);
           const bossEnemy = createEnemy(scaled, pos);
           bossEnemy.dormant = true; // CSV3: stays inactive until player enters
+          bossEnemy.isBoss = true;  // designated boss — grants rewards on kill
+          bossEnemy.roomBounds = {
+            left: (room.x + 1) * TILE_SIZE,
+            right: (room.x + room.width - 1) * TILE_SIZE,
+            top: (room.y + 1) * TILE_SIZE,
+            bottom: (room.y + room.height - 1) * TILE_SIZE,
+          };
           this.enemies.push(bossEnemy);
         }
         continue;
@@ -162,7 +169,16 @@ export class Game {
         miniBoss.xpReward = Math.round(miniBoss.xpReward * 3);
         miniBoss.name = `Elite ${miniBoss.name}`;
         const pos = getRoomCenterWorld(room);
-        this.enemies.push(createEnemy(miniBoss, pos));
+        const miniBossEnemy = createEnemy(miniBoss, pos);
+        miniBossEnemy.dormant = true;  // stays inactive until player enters room
+        miniBossEnemy.isBoss = true;   // designated miniboss — grants rewards on kill
+        miniBossEnemy.roomBounds = {
+          left: (room.x + 1) * TILE_SIZE,
+          right: (room.x + room.width - 1) * TILE_SIZE,
+          top: (room.y + 1) * TILE_SIZE,
+          bottom: (room.y + room.height - 1) * TILE_SIZE,
+        };
+        this.enemies.push(miniBossEnemy);
         continue;
       }
 
@@ -203,11 +219,23 @@ export class Game {
           const emptySlot = this.player.hotbar.findIndex((s) => s.kind === 'empty');
           if (emptySlot >= 0) this.player.hotbar[emptySlot] = { kind: 'spell', ref: element };
         } else {
-          addMagicXp(this.player, element, 50);
-          this.addNotification(`${MAGIC_TYPE_NAMES[element]} upgraded!`, MAGIC_TYPE_COLORS[element]);
+          // Guarantee a tier upgrade — set XP to the next tier threshold
+          const magic = this.player.magics.find((m) => m.magicType === element);
+          if (magic) {
+            const currentTier = getHighestUnlockedTier(magic.xp);
+            if (currentTier < 5) {
+              const nextTier = (currentTier + 1) as SpellTier;
+              magic.xp = TIER_XP_THRESHOLDS[nextTier];
+              magic.selectedTier = undefined; // reset to use highest tier
+              this.addNotification(`${MAGIC_TYPE_NAMES[element]} upgraded to Tier ${nextTier}!`, MAGIC_TYPE_COLORS[element]);
+            } else {
+              this.addNotification(`${MAGIC_TYPE_NAMES[element]} already at max tier!`, MAGIC_TYPE_COLORS[element]);
+            }
+          }
         }
       }
       this.menu.type = 'none';
+      this.input.endFrame();
       return;
     }
     if (action === 'boss_reward_secondary') {
@@ -216,6 +244,7 @@ export class Game {
       else if (type === 'passive') { this.player.baseDamage += 5; this.addNotification('+5 Base Damage!', '#ff8844'); }
       else if (type === 'currency') { this.player.gold += 50; this.addNotification('+50 Gold!', '#ffdd44'); }
       this.menu.type = 'none';
+      this.input.endFrame();
       return;
     }
 
@@ -224,12 +253,18 @@ export class Game {
     if (this.state.scene === 'lobby') {
       updatePlayer(this.player, this.input, this.dungeon, dt);
       this.renderer.followTarget(this.player.position, 0.08);
-      // F at portal starts run
+      // F to interact in lobby
       if (this.input.isKeyJustPressed('KeyF')) {
         const pt = worldToTile(this.player.position.x, this.player.position.y);
         const tile = this.dungeon.tiles[pt.y]?.[pt.x];
         if (tile?.type === 'stairs') {
           this.startNewRun();
+          this.input.endFrame();
+          return;
+        }
+        if (tile?.type === 'cooking_station') {
+          this.menu.type = 'cooking';
+          this.menu.selectedIndex = 0;
           this.input.endFrame();
           return;
         }
@@ -259,26 +294,7 @@ export class Game {
           return findRoomAt(this.dungeon, et.x, et.y) === playerRoom;
         });
 
-        if (roomEnemies.length === 0) {
-          // Spawn enemies for this encounter
-          const count = playerRoom.type === 'boss' ? 1 : randomInt(2, 4);
-          const availableEnemies = getEnemiesForFloor(this.state.floor);
-          for (let i = 0; i < count; i++) {
-            const def = randomChoice(availableEnemies);
-            const scaled = scaleEnemyForFloor(def, this.state.floor + (playerRoom.type === 'boss' ? 3 : 1));
-            if (playerRoom.type === 'miniboss') {
-              scaled.hp = Math.round(scaled.hp * 2);
-              scaled.damage = Math.round(scaled.damage * 1.5);
-              scaled.size = Math.round(scaled.size * 1.3);
-              scaled.name = `Elite ${scaled.name}`;
-            }
-            const pos = {
-              x: (playerRoom.x + randomInt(2, playerRoom.width - 3)) * TILE_SIZE + TILE_SIZE / 2,
-              y: (playerRoom.y + randomInt(2, playerRoom.height - 3)) * TILE_SIZE + TILE_SIZE / 2,
-            };
-            this.enemies.push(createEnemy(scaled, pos));
-          }
-        }
+        // Boss/miniboss enemies are spawned dormant in generateFloor — no extra spawning needed
 
         playerRoom.locked = true;
         this.addNotification('The room seals behind you!', '#ff4444');
@@ -305,6 +321,7 @@ export class Game {
       if (livingEnemies.length === 0) {
         playerRoom.locked = false;
         playerRoom.cleared = true;
+        this.extinguishTorches(playerRoom);
         this.addNotification('Room unsealed!', '#44ff44');
       }
     }
@@ -322,11 +339,10 @@ export class Game {
         }
         this.addNotification('Debug: Fog of War OFF', '#ffff00');
       } else {
-        // Reset all tiles to unexplored — visibility will rebuild from player position
+        // Reset visibility only — explored state is preserved so the map stays discovered
         for (let y = 0; y < this.dungeon.height; y++) {
           for (let x = 0; x < this.dungeon.width; x++) {
             this.dungeon.tiles[y][x].visible = false;
-            this.dungeon.tiles[y][x].explored = false;
           }
         }
         this.addNotification('Debug: Fog of War ON', '#ffff00');
@@ -402,17 +418,7 @@ export class Game {
 
           if (killed) { (enemy as any)._deathHandled = true; this.handleEnemyKill(enemy); }
 
-          // Magic XP on hit
-          const activeSlot = this.player.hotbar[this.player.activeHotbarIndex];
-          const magic = activeSlot?.kind === 'spell' ? this.player.magics.find((m) => m.magicType === activeSlot.ref) : undefined;
-          if (magic) {
-            const result = addMagicXp(this.player, magic.magicType, 3);
-            if (result.leveled && result.newTier) {
-              const spellDef = getActiveSpellForMagic(magic.magicType as MagicType, magic.xp);
-              const name = spellDef?.name || `Tier ${result.newTier}`;
-              this.addNotification(`${MAGIC_TYPE_NAMES[magic.magicType as MagicType] || magic.magicType} upgraded: ${name}!`, MAGIC_TYPE_COLORS[magic.magicType as MagicType] || '#ffffff');
-            }
-          }
+          // Spell XP removed — spells only upgrade via boss rewards
 
           // Lifesteal
           const spellDef = getSpellById(proj.spellId);
@@ -577,8 +583,7 @@ export class Game {
             this.addNotification(`${comboDef.description}`, comboDef.color);
           }
 
-          addMagicXp(this.player, primaryRef, 5);
-          addMagicXp(this.player, secondaryRef, 3);
+          // Spell XP removed — spells only upgrade via boss rewards
         } else {
           // R10: No fizzle — cast primary spell with a damage boost from secondary
           if (primarySpell) {
@@ -586,8 +591,7 @@ export class Game {
             if (primarySpell) {
               this.player.spellCooldowns.set(primarySpell.id, primarySpell.cooldown);
             }
-            addMagicXp(this.player, primaryRef, 2);
-            addMagicXp(this.player, secondaryRef, 1);
+            // Spell XP removed — spells only upgrade via boss rewards
           }
         }
 
@@ -610,7 +614,6 @@ export class Game {
           const spellDef = getActiveSpellForMagic(queue[0].ref as MagicType, magic.xp);
           if (spellDef && !this.player.spellCooldowns.has(spellDef.id)) {
             this.fireSpell(spellDef);
-            addMagicXp(this.player, queue[0].ref, 1);
           }
         }
       }
@@ -625,7 +628,6 @@ export class Game {
           const spellDef = getActiveSpellForMagic(entry.ref as MagicType, magic.xp);
           if (spellDef && !this.player.spellCooldowns.has(spellDef.id)) {
             this.fireSpell(spellDef);
-            addMagicXp(this.player, entry.ref, 1);
           }
         }
       } else if (entry.kind === 'item') {
@@ -645,7 +647,6 @@ export class Game {
         const spellDef = getActiveSpellForMagic(magic.magicType as MagicType, magic.xp);
         if (!spellDef || this.player.spellCooldowns.has(spellDef.id)) return;
         this.fireSpell(spellDef);
-        addMagicXp(this.player, magic.magicType, 1);
       } else if (slot.kind === 'item') {
         this.consumeItem(slot.ref);
       }
@@ -683,12 +684,7 @@ export class Game {
       this.addNotification(`Crafted: ${recipe.name}!`, '#44ff44');
     }
 
-    // XP to any spell magic types used
-    for (const e of recipe.elements) {
-      if (e.kind === 'spell') {
-        addMagicXp(this.player, e.ref, 3);
-      }
-    }
+    // Spell XP removed — spells only upgrade via boss rewards
   }
 
   private consumeItem(itemId: string): void {
@@ -800,7 +796,6 @@ export class Game {
 
     const names = elements.map((e) => MAGIC_TYPE_NAMES[e]).join(' + ');
     this.addNotification(`${names} Shield (T${tier})`, shieldColor);
-    for (const el of elements) addMagicXp(this.player, el, 2);
   }
 
   private handleInteraction(): void {
@@ -830,7 +825,8 @@ export class Game {
     }
 
     if (tile.type === 'cooking_station') {
-      this.addNotification('Use hotbar combos to cook! (e.g. Fire + Meat)', '#ff8844');
+      this.menu.type = 'cooking';
+      this.menu.selectedIndex = 0;
       return;
     }
   }
@@ -859,8 +855,8 @@ export class Game {
       }
     }
 
-    // CSV1: Boss kill reward screen
-    if (enemy.def.behavior === 'boss' || (enemy.def.name && enemy.def.name.startsWith('Elite'))) {
+    // CSV1: Boss kill reward screen — only designated bosses/minibosses
+    if (enemy.isBoss) {
       const bossElement = loot.magicUnlock || randomChoice(ALL_MAGIC_TYPES);
       const hasElement = hasMagic(this.player, bossElement);
       const spellLabel = hasElement
@@ -909,6 +905,7 @@ export class Game {
       });
       if (roomEnemies.every((e) => !e.active)) {
         room.cleared = true;
+        this.extinguishTorches(room);
         if (room.locked) {
           room.locked = false;
           this.addNotification('Room unsealed!', '#44ff44');
@@ -941,6 +938,24 @@ export class Game {
     this.player = createPlayer();
     const spawnPos = getRoomCenterWorld(this.dungeon.spawnRoom);
     this.player.position = { ...spawnPos };
+  }
+
+  private extinguishTorches(room: import('./systems/dungeon').Room): void {
+    // Convert torches in and around the room (1 tile margin) to wall tiles
+    const margin = 1;
+    const yStart = Math.max(0, room.y - margin);
+    const yEnd = Math.min(this.dungeon.height, room.y + room.height + margin);
+    const xStart = Math.max(0, room.x - margin);
+    const xEnd = Math.min(this.dungeon.width, room.x + room.width + margin);
+    for (let y = yStart; y < yEnd; y++) {
+      for (let x = xStart; x < xEnd; x++) {
+        const tile = this.dungeon.tiles[y]?.[x];
+        if (tile && (tile.type === 'torch_yellow' || tile.type === 'torch_green' || tile.type === 'torch_red')) {
+          tile.type = 'wall';
+          tile.walkable = false;
+        }
+      }
+    }
   }
 
   private addNotification(text: string, color: string): void {
